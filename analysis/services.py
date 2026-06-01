@@ -42,7 +42,7 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
                 if m.content.strip():
                     module_map[m.id] = m.content
 
-        job_map = {j.id: j.description for j in jobs if j.description.strip()}
+        job_map = {j.id: j.analysis_text() for j in jobs if j.analysis_text().strip()}
 
         all_texts = list(module_map.values()) + list(job_map.values())
         logger.info("Preparing semantic scorer on %s documents...", len(all_texts))

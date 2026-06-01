@@ -11,8 +11,9 @@
     <thead>
       <tr>
         <th>Title</th>
-        <th>Company</th>
+        <th>Company / Recruiter</th>
         <th>Location</th>
+        <th>Reference</th>
         <th>Source</th>
         <th>Skills</th>
         <th>Added</th>
@@ -24,10 +25,18 @@
       <tr>
         <td>
           <div style="font-weight:600;">{{ job.title }}</div>
+          {% if job.category %}<div class="text-sm text-muted">{{ job.category }}</div>{% endif %}
           {% if job.url %}<a href="{{ job.url }}" target="_blank" class="text-sm text-muted">Original advert</a>{% endif %}
         </td>
-        <td class="text-muted">{{ job.company|default:"None" }}</td>
+        <td>
+          <div class="text-muted">{{ job.company|default:"None" }}</div>
+          {% if job.recruiter %}<div class="text-sm text-muted">Recruiter: {{ job.recruiter }}</div>{% endif %}
+        </td>
         <td class="text-muted text-sm">{{ job.location|default:"None" }}</td>
+        <td class="text-muted text-sm">
+          {{ job.job_reference|default:"None" }}
+          {% if job.date_posted %}<div>{{ job.date_posted|date:"d M Y" }}</div>{% endif %}
+        </td>
         <td>
           <span class="badge {% if job.source == 'adzuna' %}badge-blue{% elif job.source == 'csv' %}badge-olive{% else %}badge-gray{% endif %}">
             {{ job.get_source_display }}
@@ -50,7 +59,7 @@
       </tr>
       {% empty %}
       <tr>
-        <td colspan="7">
+        <td colspan="8">
           <div class="empty">
             <div class="empty-title">No jobs yet</div>
             <div class="empty-text">Import a CSV or fetch from the Adzuna API.</div>

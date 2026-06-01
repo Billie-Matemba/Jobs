@@ -11,6 +11,7 @@ from dashboard.views import (
     StartContinuousJobsView, StartJobsOnlyView, StopTaskView, TaskListView,
     task_status_api, results_json, dashboard_metrics, similarity_network,
 )
+from course_scraper.views import CourseScraperView, StartCourseScrapeView, scrape_status_api
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -24,6 +25,8 @@ urlpatterns = [
     path("courses/<int:pk>/", CourseDetailView.as_view(), name="course-detail"),
     path("courses/<int:pk>/edit/", CourseEditView.as_view(), name="course-edit"),
     path("courses/<int:pk>/delete/", CourseDeleteView.as_view(), name="course-delete"),
+    path("course-scraper/", CourseScraperView.as_view(), name="course-scraper"),
+    path("course-scraper/start/", StartCourseScrapeView.as_view(), name="course-scraper-start"),
 
     # Modules
     path("courses/<int:course_pk>/modules/add/", ModuleCreateView.as_view(), name="module-create"),
@@ -48,4 +51,5 @@ urlpatterns = [
     path("api/results/", results_json, name="results-json"),
     path("api/dashboard/metrics/", dashboard_metrics, name="dashboard-metrics"),
     path("api/dashboard/network/", similarity_network, name="similarity-network"),
+    path("api/course-scraper/status/", scrape_status_api, name="course-scraper-status"),
 ]

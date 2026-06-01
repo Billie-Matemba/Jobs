@@ -5,13 +5,14 @@ Job ingestion: CSV upload and Adzuna API.
 import csv
 import io
 import logging
+import re
 from datetime import datetime
 
 import requests
 from django.conf import settings
 from requests import RequestException
 
-from .models import JobAdvert
+from .models import JobAdvert, job_fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +71,37 @@ def import_from_csv(file_bytes: bytes) -> dict:
             continue
 
         try:
+            fingerprint = job_fingerprint(
+                title,
+                row.get("company", ""),
+                row.get("location", ""),
+                description,
+                row.get("recruiter", ""),
+                row.get("job_ref", "") or row.get("job_reference", ""),
+            )
+            if JobAdvert.objects.filter(fingerprint=fingerprint).exists():
+                skipped += 1
+                continue
+            sections = extract_advert_sections(description)
+            metadata = extract_advert_metadata(description)
             batch.append(JobAdvert(
                 title=title[:255],
                 company=row.get("company", "")[:255],
-                location=row.get("location", "")[:255],
+                recruiter=(row.get("recruiter", "") or metadata.get("recruiter") or row.get("company", ""))[:255],
+                job_reference=(row.get("job_ref", "") or row.get("job_reference", "") or metadata.get("job_reference", ""))[:255],
+                location=(row.get("location", "") or metadata.get("location", ""))[:255],
+                category=row.get("category", "")[:255],
+                contract_type=row.get("contract_type", "")[:80],
+                contract_time=row.get("contract_time", "")[:80],
+                summary=row.get("summary", "") or sections["summary"],
+                position_info=row.get("position_info", "") or sections["position_info"],
                 description=description,
                 url=row.get("url", "")[:500],
                 source="csv",
+                fingerprint=fingerprint,
                 salary_min=_to_int(row.get("salary_min")),
                 salary_max=_to_int(row.get("salary_max")),
+                date_posted=parse_advert_date(row.get("date_posted") or metadata.get("date_posted")),
             ))
             saved += 1
         except Exception as e:
@@ -144,8 +167,21 @@ def fetch_adzuna_page(keyword: str, location: str = "south africa", page: int = 
 
     for index, item in enumerate(results, start=1):
         ext_id = str(item.get("id", ""))
+        title = item.get("title", "")[:255]
+        company = item.get("company", {}).get("display_name", "")[:255]
+        recruiter = _value(item, "recruiter", "display_name") or company
+        job_reference = str(item.get("job_ref") or item.get("job_reference") or item.get("reference") or "")[:255]
+        location_name = item.get("location", {}).get("display_name", "")[:255]
+        description = item.get("description", "")
+        sections = extract_advert_sections(description)
+        metadata = extract_advert_metadata(description)
+        recruiter = (recruiter or metadata.get("recruiter") or company)[:255]
+        job_reference = (job_reference or metadata.get("job_reference", ""))[:255]
+        location_name = (location_name or metadata.get("location", ""))[:255]
+        category = _value(item, "category", "label") or _value(item, "category", "tag") or ""
+        fingerprint = job_fingerprint(title, company, location_name, description, recruiter, job_reference)
 
-        if ext_id and JobAdvert.objects.filter(external_id=ext_id).exists():
+        if (ext_id and JobAdvert.objects.filter(source="adzuna", external_id=ext_id).exists()) or JobAdvert.objects.filter(fingerprint=fingerprint).exists():
             duplicates += 1
             if progress_callback:
                 progress_callback({
@@ -159,16 +195,27 @@ def fetch_adzuna_page(keyword: str, location: str = "south africa", page: int = 
             continue
 
         JobAdvert.objects.create(
-            title=item.get("title", "")[:255],
-            company=item.get("company", {}).get("display_name", "")[:255],
-            location=item.get("location", {}).get("display_name", "")[:255],
-            description=item.get("description", ""),
+            title=title,
+            company=company,
+            recruiter=recruiter[:255],
+            job_reference=job_reference,
+            location=location_name,
+            category=category[:255],
+            contract_type=str(item.get("contract_type") or "")[:80],
+            contract_time=str(item.get("contract_time") or "")[:80],
+            latitude=_to_float(item.get("latitude")),
+            longitude=_to_float(item.get("longitude")),
+            summary=sections["summary"],
+            position_info=sections["position_info"],
+            description=description,
             url=item.get("redirect_url", ""),
             source="adzuna",
             external_id=ext_id,
+            fingerprint=fingerprint,
             salary_min=item.get("salary_min"),
             salary_max=item.get("salary_max"),
-            date_posted=_parse_date(item.get("created")),
+            source_payload=item,
+            date_posted=_parse_date(item.get("created")) or _parse_date(metadata.get("date_posted")),
         )
         saved += 1
         if progress_callback:
@@ -253,6 +300,94 @@ def _extract_error_detail(resp):
     return str(data)[:300]
 
 
+SECTION_LABELS = {
+    "summary": ["summary", "job summary"],
+    "position_info": ["position info", "position information", "key responsibilities", "qualifications", "preferred knowledge and experience"],
+}
+
+METADATA_LABELS = {
+    "recruiter": ["recruiter", "agency", "consultant"],
+    "job_reference": ["job ref", "job reference", "reference", "ref"],
+    "date_posted": ["date posted", "posted", "posted date"],
+    "location": ["location"],
+}
+
+
+def extract_advert_sections(text):
+    sections = {"summary": "", "position_info": ""}
+    if not text:
+        return sections
+
+    current = None
+    buffers = {"summary": [], "position_info": []}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        label = _section_for_line(line)
+        if label:
+            current = label
+            remainder = re.sub(r"^[A-Za-z /&+-]+:\s*", "", line).strip()
+            if remainder and remainder.lower() != line.lower():
+                buffers[current].append(remainder)
+            continue
+        if current:
+            buffers[current].append(line)
+
+    sections["summary"] = "\n".join(buffers["summary"]).strip()
+    sections["position_info"] = "\n".join(buffers["position_info"]).strip()
+    return sections
+
+
+def extract_advert_metadata(text):
+    metadata = {}
+    lines = [line.strip() for line in (text or "").splitlines()]
+    for index, line in enumerate(lines):
+        if not line:
+            continue
+        clean = re.sub(r"[^a-z0-9 ]+", " ", line.lower()).strip()
+        clean = re.sub(r"\s+", " ", clean)
+        for field, labels in METADATA_LABELS.items():
+            matching_label = next((label for label in labels if clean == label or clean.startswith(label + " ")), None)
+            if not matching_label:
+                continue
+            value = _inline_label_value(line)
+            if not value:
+                value = _next_non_empty_line(lines, index + 1)
+            if value:
+                metadata[field] = value[:255]
+    return metadata
+
+
+def _section_for_line(line):
+    clean = re.sub(r"[^a-z0-9 ]+", " ", line.lower()).strip()
+    clean = re.sub(r"\s+", " ", clean)
+    for section, labels in SECTION_LABELS.items():
+        if any(clean == label or clean.startswith(label + " ") for label in labels):
+            return section
+    return None
+
+
+def _inline_label_value(line):
+    if ":" not in line:
+        return ""
+    return line.split(":", 1)[1].strip()
+
+
+def _next_non_empty_line(lines, start):
+    for line in lines[start:]:
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def _value(item, key, child):
+    value = item.get(key)
+    if isinstance(value, dict):
+        return str(value.get(child) or "")
+    return ""
+
+
 def _to_int(val):
     try:
         return int(float(str(val).replace(",", "").strip()))
@@ -260,9 +395,25 @@ def _to_int(val):
         return None
 
 
+def _to_float(val):
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
 def _parse_date(s):
+    return parse_advert_date(s)
+
+
+def parse_advert_date(s):
     if not s:
         return None
+    for fmt in ("%A, %B %d, %Y", "%B %d, %Y", "%d %B %Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(str(s).strip()[:40], fmt).date()
+        except Exception:
+            pass
     try:
         return datetime.fromisoformat(s[:10]).date()
     except Exception:

@@ -23,7 +23,7 @@
         <div class="upload-zone" id="dropZone" onclick="document.getElementById('csvInput').click()">
           <div class="upload-zone-title" id="fileLabel">Drop CSV here or click to browse</div>
           <div class="upload-zone-hint">Required columns: <strong>title</strong>, <strong>description</strong></div>
-          <div class="upload-zone-hint mt-2">Optional: company, location, url, salary_min, salary_max</div>
+          <div class="upload-zone-hint mt-2">Optional: company, recruiter, job_reference, category, location, summary, position_info, url, salary_min, salary_max</div>
         </div>
         <input type="file" name="csv_file" id="csvInput" accept=".csv" style="display:none" onchange="onFileSelect(this)">
         <button type="submit" class="btn btn-primary mt-4" style="width:100%;justify-content:center;">Import CSV in Background</button>
@@ -75,8 +75,38 @@
           <input class="form-control" type="text" name="company" placeholder="e.g. Standard Bank">
         </div>
         <div class="form-group">
+          <label class="form-label">Recruiter</label>
+          <input class="form-control" type="text" name="recruiter" placeholder="e.g. Mindworx Consulting">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Job Reference</label>
+          <input class="form-control" type="text" name="job_reference" placeholder="e.g. JNB008083/MNT">
+        </div>
+        <div class="form-group">
           <label class="form-label">Location</label>
           <input class="form-control" type="text" name="location" placeholder="e.g. Johannesburg, GP">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <input class="form-control" type="text" name="category" placeholder="e.g. IT, Software Engineering">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="form-group">
+            <label class="form-label">Contract Type</label>
+            <input class="form-control" type="text" name="contract_type" placeholder="e.g. permanent">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Contract Time</label>
+            <input class="form-control" type="text" name="contract_time" placeholder="e.g. full_time">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Summary</label>
+          <textarea class="form-control" name="summary" rows="4" placeholder="Optional: paste the summary section separately"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Position Info</label>
+          <textarea class="form-control" name="position_info" rows="6" placeholder="Optional: paste responsibilities, qualifications, and preferred experience separately"></textarea>
         </div>
         <div class="form-group">
           <label class="form-label">Full Job Description *</label>

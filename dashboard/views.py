@@ -1,3 +1,4 @@
+from django.db import IntegrityError
 from django.db.models import Avg
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -8,6 +9,7 @@ from django.views.generic import TemplateView, ListView
 
 from courses.models import Course
 from jobs.models import JobAdvert
+from jobs.ingestion import extract_advert_metadata, extract_advert_sections, parse_advert_date
 from analysis.models import AnalysisRun, GapResult, SkillMatrix, TaskRecord
 # Plain functions now — no .delay(), no Celery
 from analysis.tasks import (
@@ -112,13 +114,27 @@ class JobUploadView(View):
             if not title or not desc:
                 messages.error(request, "Title and description are required.")
                 return render(request, self.template_name)
-            JobAdvert.objects.create(
-                title=title,
-                company=request.POST.get("company", "").strip(),
-                location=request.POST.get("location", "").strip(),
-                description=desc,
-                source="upload",
-            )
+            sections = extract_advert_sections(desc)
+            metadata = extract_advert_metadata(desc)
+            try:
+                JobAdvert.objects.create(
+                    title=title,
+                    company=request.POST.get("company", "").strip(),
+                    recruiter=request.POST.get("recruiter", "").strip() or metadata.get("recruiter", ""),
+                    job_reference=request.POST.get("job_reference", "").strip() or metadata.get("job_reference", ""),
+                    location=request.POST.get("location", "").strip() or metadata.get("location", ""),
+                    category=request.POST.get("category", "").strip(),
+                    contract_type=request.POST.get("contract_type", "").strip(),
+                    contract_time=request.POST.get("contract_time", "").strip(),
+                    summary=request.POST.get("summary", "").strip() or sections["summary"],
+                    position_info=request.POST.get("position_info", "").strip() or sections["position_info"],
+                    description=desc,
+                    source="upload",
+                    date_posted=parse_advert_date(metadata.get("date_posted")),
+                )
+            except IntegrityError:
+                messages.warning(request, "That job advert already exists, so it was not added again.")
+                return redirect("job-list")
             messages.success(request, f"Job '{title}' added.")
             return redirect("job-list")
 
@@ -341,6 +357,15 @@ def results_json(request):
             "course": r.course.name,
             "job": r.job.title,
             "company": r.job.company,
+            "recruiter": r.job.recruiter,
+            "job_reference": r.job.job_reference,
+            "location": r.job.location,
+            "category": r.job.category,
+            "contract_type": r.job.contract_type,
+            "contract_time": r.job.contract_time,
+            "date_posted": r.job.date_posted.isoformat() if r.job.date_posted else None,
+            "summary": r.job.summary,
+            "position_info": r.job.position_info,
             "score": round(r.similarity_score * 100, 1),
             "matched": r.matched_skills,
             "missing": r.missing_skills,

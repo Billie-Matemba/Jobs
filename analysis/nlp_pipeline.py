@@ -21,6 +21,13 @@ SKILL_KEYWORDS = [
     # Data & programming
     "sql","mysql","postgresql","python","r","java","javascript","html","css",
     "django","flask","data analysis","data analytics","machine learning","artificial intelligence",
+    "generative ai","genai","data engineering","data science","software engineering",
+    "cloud native","cloud-native","kubernetes","aws","azure","gcp","google cloud",
+    "devops","ci cd","ci/cd","sre","site reliability engineering","distributed systems",
+    "technical architecture","enterprise architecture","systems architecture",
+    "algorithms","security","encryption","tokenisation","tokenization","defi","web3",
+    "databases","automation","fintech","mainframe","z/os","j2ee","c++","c#",
+    "f#","rust","haskell","go","typescript","scala","kotlin",
     # HR & business
     "human resources","hr","recruitment","payroll","performance management",
     "labour law","employment equity","organisational development","training and development",
@@ -32,6 +39,8 @@ SKILL_KEYWORDS = [
     "communication","project management","leadership","teamwork","problem solving",
     "critical thinking","time management","customer service","negotiation",
     "presentation","stakeholder management","change management",
+    "technical leadership","mentorship","technical strategy","vendor evaluation",
+    "procurement","proof of concept","agile","safe","pmp","togaf","cissp",
     # Digital & marketing
     "digital marketing","seo","social media","content creation","google analytics",
     "email marketing","crm","salesforce",
@@ -57,7 +66,8 @@ def extract_skills(text: str) -> List[str]:
     cleaned = clean_text(text)
     found = []
     for skill in SKILL_KEYWORDS:
-        if re.search(r"\b" + re.escape(skill) + r"\b", cleaned):
+        normalized_skill = clean_text(skill)
+        if normalized_skill and re.search(r"\b" + re.escape(normalized_skill) + r"\b", cleaned):
             found.append(skill)
     return sorted(found)
 

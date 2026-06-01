@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Course Scraper - CurriculumMatch{% endblock %}
+{% block page_title %}Course Scraper{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'course-list' %}" class="btn btn-outline">View Courses</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.scraper-shell { display:grid; grid-template-columns:minmax(320px, 420px) 1fr; gap:24px; align-items:start; }
+.school-list { display:grid; gap:10px; max-height:620px; overflow:auto; padding-right:4px; }
+.school-option { display:grid; grid-template-columns:20px 1fr; gap:10px; align-items:start; padding:12px; border:1px solid rgba(17,17,17,.08); border-radius:8px; background:#fff; }
+.school-option strong { display:block; color:var(--ink); font-size:13px; }
+.school-option span { display:block; color:var(--muted); font-size:12px; margin-top:3px; line-height:1.45; }
+.run-list { display:grid; gap:14px; }
+.run-card { border:1px solid rgba(17,17,17,.08); border-radius:8px; background:#fff; padding:18px; }
+.run-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.run-title { font-weight:700; color:var(--ink); }
+.run-notes { color:var(--muted); font-size:13px; margin-top:8px; line-height:1.55; }
+.metric-strip { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-top:16px; }
+.mini-metric { border:1px solid rgba(17,17,17,.08); border-radius:8px; padding:10px; background:#fafafa; }
+.mini-metric b { display:block; color:var(--gold); font-size:18px; }
+.mini-metric span { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.candidate-grid { display:grid; gap:10px; margin-top:14px; }
+.candidate { border-left:3px solid var(--gold); padding:10px 12px; background:#fafafa; border-radius:0 8px 8px 0; }
+.candidate strong { color:var(--ink); font-size:13px; }
+.candidate div { color:var(--muted); font-size:12px; margin-top:4px; }
+.pulse-line { height:3px; margin-top:14px; overflow:hidden; background:rgba(191,151,74,.18); border-radius:99px; }
+.pulse-line::after { content:""; display:block; height:100%; width:34%; background:linear-gradient(90deg, transparent, var(--gold), transparent); animation:scrapePulse 1.4s infinite; }
+@keyframes scrapePulse { from { transform:translateX(-100%); } to { transform:translateX(320%); } }
+@media (max-width:1000px) { .scraper-shell { grid-template-columns:1fr; } .metric-strip { grid-template-columns:repeat(2, 1fr); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="scraper-shell">
+  <div class="card">
+    <div class="card-label">Configured South African Business Schools</div>
+    <form method="post" action="{% url 'course-scraper-start' %}" class="mt-4">
+      {% csrf_token %}
+      <div class="school-list">
+        {% for index, school in schools %}
+        <label class="school-option">
+          <input type="checkbox" name="school" value="{{ index }}" {% if school.name == "Johannesburg Business School" %}checked{% endif %}>
+          <span>
+            <strong>{{ school.name }}</strong>
+            <span>{{ school.urls|join:", " }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn btn-primary mt-4 w-full" style="justify-content:center;" {% if running %}disabled{% endif %}>
+        {% if running %}Scrape Running{% else %}Start Course Scrape{% endif %}
+      </button>
+      <div class="text-sm text-muted mt-4">
+        Edit <code>course_scraper/school_urls.py</code> to add or tune source URLs.
+      </div>
+    </form>
+  </div>
+
+  <div>
+    <div class="grid-4 mb-4" id="scrapeMetrics">
+      <div class="stat-card"><div class="stat-label">Latest Pages</div><div class="stat-value">0</div></div>
+      <div class="stat-card"><div class="stat-label">Courses Added</div><div class="stat-value">0</div></div>
+      <div class="stat-card"><div class="stat-label">Modules Added</div><div class="stat-value">0</div></div>
+      <div class="stat-card"><div class="stat-label">Candidates</div><div class="stat-value">0</div></div>
+    </div>
+
+    <div class="run-list" id="runList">
+      {% for run in runs %}
+      <div class="run-card">
+        <div class="run-top">
+          <div>
+            <div class="run-title">{{ run.school_name|default:"Course scrape" }}</div>
+            <div class="text-sm text-muted">{{ run.created_at|date:"d M Y H:i" }}</div>
+          </div>
+          <span class="badge {% if run.status == 'done' %}badge-green{% elif run.status == 'error' %}badge-red{% else %}badge-blue{% endif %}">{{ run.get_status_display }}</span>
+        </div>
+        {% if run.status == "running" or run.status == "pending" %}<div class="pulse-line"></div>{% endif %}
+        <div class="metric-strip">
+          <div class="mini-metric"><b>{{ run.pages_seen }}</b><span>Pages</span></div>
+          <div class="mini-metric"><b>{{ run.courses_created }}</b><span>Courses</span></div>
+          <div class="mini-metric"><b>{{ run.modules_created }}</b><span>Modules</span></div>
+          <div class="mini-metric"><b>{{ run.candidates.count }}</b><span>Candidates</span></div>
+        </div>
+        <div class="run-notes">{{ run.notes|default:"Waiting for crawler output." }}</div>
+        {% if run.candidates.exists %}
+        <div class="candidate-grid">
+          {% for candidate in run.candidates.all|slice:":5" %}
+          <div class="candidate">
+            <strong>{{ candidate.course_name }}</strong>
+            <div>{{ candidate.school_name }} - {{ candidate.extracted_modules|length }} modules - confidence {{ candidate.confidence|floatformat:2 }}</div>
+            <div>{{ candidate.extracted_skills|slice:":10"|join:", " }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% empty %}
+      <div class="empty">
+        <div class="empty-title">No course scrapes yet</div>
+        <div class="empty-text">Start with Johannesburg Business School or select every configured South African business school.</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function refreshScraperStatus() {
+  const response = await fetch("{% url 'course-scraper-status' %}");
+  const data = await response.json();
+  const latest = data.runs[0];
+  if (!latest) return;
+  const values = [
+    latest.pages_seen,
+    latest.courses_created,
+    latest.modules_created,
+    latest.candidates
+  ];
+  document.querySelectorAll('#scrapeMetrics .stat-value').forEach((node, index) => {
+    node.textContent = values[index] || 0;
+  });
+  if (latest.status === 'running' || latest.status === 'pending') {
+    setTimeout(refreshScraperStatus, 2500);
+  }
+}
+refreshScraperStatus();
+</script>
+{% endblock %}

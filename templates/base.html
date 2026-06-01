@@ -601,6 +601,9 @@ body {
         <a href="{% url 'course-create' %}" class="nav-item">
           <span class="nav-dot"></span> Add Course
         </a>
+        <a href="{% url 'course-scraper' %}" class="nav-item {% if request.resolver_match.url_name == 'course-scraper' %}active{% endif %}">
+          <span class="nav-dot"></span> Course Scraper
+        </a>
       </div>
       <div class="nav-section">
         <div class="nav-head">Job Market</div>
