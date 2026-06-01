@@ -1,105 +1,367 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — CurriculumMatch{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block title %}Dashboard - CurriculumMatch{% endblock %}
+{% block page_title %}Executive Dashboard{% endblock %}
 {% block topbar_actions %}
-  <form method="post" action="{% url 'run-analysis' %}">
+  <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm">
     {% csrf_token %}
     <input type="hidden" name="run_name" value="Run {{ last_run.id|add:1|default:'1' }}">
-    <button type="submit" class="btn btn-primary" id="runBtn">▶ Queue Analysis</button>
+    <button type="submit" class="btn btn-primary" id="runBtn">Queue Analysis</button>
   </form>
 {% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/styles/vis-network.min.css">
+<style>
+.dashboard-hero {
+  display:grid;
+  grid-template-columns: minmax(280px, 1.15fr) minmax(320px, 0.85fr);
+  gap:20px;
+  align-items:stretch;
+  margin-bottom:20px;
+}
+.command-panel {
+  background:linear-gradient(135deg, #090909 0%, #1a1710 100%);
+  color:#fff;
+  border:1px solid rgba(211, 176, 91, 0.32);
+  border-radius:8px;
+  padding:28px;
+  min-height:280px;
+  position:relative;
+  overflow:hidden;
+}
+.command-panel:after {
+  content:"";
+  position:absolute;
+  inset:auto -12% -34% 42%;
+  height:190px;
+  background:radial-gradient(circle, rgba(211,176,91,.22), transparent 68%);
+  pointer-events:none;
+}
+.hero-kicker { font-family:var(--mono); color:var(--gold); text-transform:uppercase; letter-spacing:.16em; font-size:11px; margin-bottom:14px; }
+.hero-title { font-family:var(--display); font-size:38px; line-height:1.02; max-width:680px; letter-spacing:0; }
+.hero-copy { max-width:620px; color:rgba(255,255,255,.68); margin-top:14px; font-size:14px; }
+.live-form { display:grid; grid-template-columns:1.2fr 1fr .7fr .7fr; gap:10px; margin-top:26px; position:relative; z-index:1; }
+.live-form .form-control { background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.18); }
+.live-form .form-control::placeholder { color:rgba(255,255,255,.5); }
+.live-actions { display:flex; gap:10px; margin-top:12px; position:relative; z-index:1; }
+.signal-panel { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.metric-card {
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-radius:8px;
+  padding:22px;
+  min-height:132px;
+}
+.metric-card.featured { background:#0b0b0b; color:#fff; border-color:rgba(211,176,91,.42); }
+.metric-label { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
+.metric-card.featured .metric-label { color:var(--gold); }
+.metric-value { font-family:var(--display); font-weight:800; font-size:40px; line-height:1; margin-top:14px; }
+.metric-sub { color:var(--muted); font-size:12px; margin-top:8px; }
+.metric-card.featured .metric-sub { color:rgba(255,255,255,.62); }
+.dashboard-grid { display:grid; grid-template-columns:1.1fr .9fr; gap:20px; align-items:start; }
+.visual-card { min-height:360px; }
+.chart-box { height:280px; }
+#similarityNetwork { height:430px; border:1px solid var(--rule); border-radius:8px; background:#fff; }
+.activity-list { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
+.activity-row { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--rule); }
+.activity-row:last-child { border-bottom:0; }
+.match-list { margin-top:14px; display:flex; flex-direction:column; gap:10px; }
+.match-row { display:grid; grid-template-columns:1fr 92px; gap:12px; align-items:center; }
+.match-name { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width:1100px) {
+  .dashboard-hero, .dashboard-grid { grid-template-columns:1fr; }
+  .live-form { grid-template-columns:1fr 1fr; }
+}
+@media (max-width:720px) {
+  .signal-panel, .live-form { grid-template-columns:1fr; }
+  .hero-title { font-size:30px; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="grid-4 mb-6">
-  <div class="card">
-    <div class="card-label">Courses</div>
-    <div class="stat-val">{{ course_count }}</div>
-    <div class="stat-sub">registered programmes</div>
+<div class="dashboard-hero">
+  <section class="command-panel">
+    <div class="hero-kicker">Live market intelligence</div>
+    <h1 class="hero-title">Curriculum and job-market alignment, continuously refreshed.</h1>
+    <p class="hero-copy">Fetch Adzuna roles first, then run the full curriculum analysis later when courses and modules are ready. Each Adzuna fetch is capped at 50 jobs and continues until paused.</p>
+
+    <form class="live-form" id="livePipelineForm" action="{% url 'start-live-jobs' %}" data-jobs-only-url="{% url 'start-jobs-only' %}">
+      {% csrf_token %}
+      <input class="form-control" name="keyword" value="data analyst" placeholder="Keyword">
+      <input class="form-control" name="location" value="south africa" placeholder="Location">
+      <input class="form-control" name="max_results" type="number" min="1" max="50" value="50" aria-label="Max results">
+      <input class="form-control" name="interval_seconds" type="number" min="10" max="3600" value="45" aria-label="Seconds between cycles">
+    </form>
+    <div class="live-actions">
+      <button class="btn btn-gold" id="startJobsOnlyBtn" type="button">Start Jobs Only</button>
+      <button class="btn btn-outline-on-dark" id="startLiveBtn" type="button">Start Live Analysis</button>
+      <button class="btn btn-outline-on-dark" id="stopLiveBtn" type="button" data-stop-url="{% if live_task %}{% url 'stop-task' live_task.id %}{% endif %}" {% if not live_task %}disabled{% endif %}>Pause</button>
+      <span class="badge badge-gold" id="liveStatus">{% if live_task %}RUNNING{% else %}IDLE{% endif %}</span>
+    </div>
+  </section>
+
+  <section class="signal-panel">
+    <div class="metric-card featured">
+      <div class="metric-label">Average cosine score</div>
+      <div class="metric-value" id="avgScore">{{ avg_score|floatformat:1 }}%</div>
+      <div class="metric-sub">latest analysis run</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Job adverts</div>
+      <div class="metric-value" id="jobCount">{{ job_count }}</div>
+      <div class="metric-sub">stored in the database</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Courses</div>
+      <div class="metric-value" id="courseCount">{{ course_count }}</div>
+      <div class="metric-sub">{{ module_count }} modules mapped</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Last analysis</div>
+      {% if last_run %}
+      <div class="mt-4"><span class="badge {% if last_run.status == 'done' %}badge-green{% elif last_run.status == 'error' %}badge-rust{% else %}badge-blue{% endif %}" id="lastRunStatus">{{ last_run.status|upper }}</span></div>
+      <div class="metric-sub">{{ last_run.name }}<br>{{ last_run.created_at|date:"d M Y H:i" }}</div>
+      {% else %}
+      <div class="metric-value" style="font-size:28px;color:var(--muted);">None</div>
+      <div class="metric-sub">no runs yet</div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<div class="dashboard-grid mb-6">
+  <div class="card visual-card">
+    <div class="section-hd">
+      <h2>Cosine Similarity Network</h2>
+      <span class="badge badge-gray">NetworkX data</span>
+    </div>
+    <div id="similarityNetwork"></div>
   </div>
-  <div class="card">
-    <div class="card-label">Modules</div>
-    <div class="stat-val">{{ module_count }}</div>
-    <div class="stat-sub">content units</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Job Adverts</div>
-    <div class="stat-val">{{ job_count }}</div>
-    <div class="stat-sub">in database</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Last Analysis</div>
-    {% if last_run %}
-      <div class="mt-2">
-        <span class="badge {% if last_run.status == 'done' %}badge-green{% elif last_run.status == 'error' %}badge-rust{% else %}badge-blue{% endif %}">
-          {{ last_run.status|upper }}
-        </span>
-      </div>
-      <div class="stat-sub mt-2">{{ last_run.name }}<br>{{ last_run.created_at|date:"d M Y · H:i" }}</div>
-    {% else %}
-      <div class="stat-val" style="color:var(--muted); font-size:28px;">—</div>
-      <div class="stat-sub">no runs yet</div>
-    {% endif %}
+
+  <div class="card visual-card">
+    <div class="section-hd">
+      <h2>Score Distribution</h2>
+      <span class="badge badge-gold">Live</span>
+    </div>
+    <div class="chart-box"><canvas id="scoreChart"></canvas></div>
   </div>
 </div>
 
-<div class="grid-2">
+<div class="dashboard-grid">
   <div class="card">
-    <div class="card-label">Quick Actions</div>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
-      <a href="{% url 'course-create' %}" class="btn btn-outline w-full" style="justify-content:center;">+ Add New Course</a>
-      <a href="{% url 'job-upload' %}" class="btn btn-outline w-full" style="justify-content:center;">↑ Import Job Adverts</a>
-      <a href="{% url 'analysis-results' %}" class="btn btn-outline w-full" style="justify-content:center;">◑ View Gap Results</a>
-      <a href="{% url 'task-list' %}" class="btn btn-outline w-full" style="justify-content:center;">
-        ⟳ Background Tasks
-        {% if pending_tasks %}<span class="badge badge-rust">{{ pending_tasks }}</span>{% endif %}
-      </a>
+    <div class="section-hd">
+      <h2>Skill Demand vs Curriculum</h2>
+      <span class="badge badge-gray">Top terms</span>
     </div>
+    <div class="chart-box"><canvas id="skillsChart"></canvas></div>
   </div>
 
   <div class="card">
-    <div class="card-label">How It Works</div>
-    <div style="margin-top:12px;display:flex;flex-direction:column;gap:16px;">
-      {% for step,desc in steps %}
-      <div class="flex gap-3">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">0{{ forloop.counter }}</span>
+    <div class="section-hd"><h2>Live Activity</h2></div>
+    <div class="activity-list" id="activityList"></div>
+    <hr class="divider">
+    <div class="section-hd"><h2>Top Matches</h2></div>
+    <div class="match-list">
+      {% for r in latest_results %}
+      <div class="match-row">
         <div>
-          <div style="font-weight:600;font-size:13.5px;">{{ step }}</div>
-          <div class="text-muted text-sm">{{ desc }}</div>
+          <div class="match-name">{{ r.course.name }} to {{ r.job.title }}</div>
+          <div class="text-muted text-sm">Cosine similarity {{ r.similarity_score|floatformat:4 }}</div>
         </div>
+        <span class="badge badge-gold">{{ r.similarity_percent }}%</span>
       </div>
       {% empty %}
-      
+      <p class="text-muted text-sm">No similarity scores yet. Queue an analysis after adding courses and jobs.</p>
       {% endfor %}
-      <div class="flex gap-3">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">01</span>
-        <div><div style="font-weight:600;font-size:13.5px;">Add Courses & Modules</div><div class="text-muted text-sm">Enter your syllabus content per module</div></div>
-      </div>
-      <div class="flex gap-3">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">02</span>
-        <div><div style="font-weight:600;font-size:13.5px;">Import Job Adverts</div><div class="text-muted text-sm">Upload CSV or pull live from Adzuna API</div></div>
-      </div>
-      <div class="flex gap-3">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">03</span>
-        <div><div style="font-weight:600;font-size:13.5px;">Queue Analysis</div><div class="text-muted text-sm">Word2Vec maps skills across both datasets</div></div>
-      </div>
-      <div class="flex gap-3">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">04</span>
-        <div><div style="font-weight:600;font-size:13.5px;">Review Gap Results</div><div class="text-muted text-sm">See match scores and missing skills per course</div></div>
-      </div>
-    
     </div>
   </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script>
-document.getElementById('runBtn')?.addEventListener('click', function(){
-  this.innerHTML = '<span class="spinner"></span> Queuing…';
-  this.disabled = true;
+const metricsUrl = "{% url 'dashboard-metrics' %}";
+const networkUrl = "{% url 'similarity-network' %}";
+const liveForm = document.getElementById('livePipelineForm');
+const startJobsOnlyBtn = document.getElementById('startJobsOnlyBtn');
+const startLiveBtn = document.getElementById('startLiveBtn');
+const stopLiveBtn = document.getElementById('stopLiveBtn');
+const liveStatus = document.getElementById('liveStatus');
+let liveStatusUrl = "{% if live_task %}{% url 'task-status-api' live_task.id %}{% endif %}";
+const toastedTasks = new Set();
+
+function csrfToken() {
+  return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[char]));
+}
+
+const scoreChart = new Chart(document.getElementById('scoreChart'), {
+  type: 'bar',
+  data: { labels: ['0-20','20-40','40-60','60-80','80-100'], datasets: [{ label: 'Matches', data: [0,0,0,0,0], backgroundColor: '#d3b05b', borderColor: '#0b0b0b', borderWidth: 1 }] },
+  options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } } }
 });
-{% if last_run and last_run.status == 'running' %}
-setTimeout(() => location.reload(), 5000);
-{% endif %}
+
+const skillsChart = new Chart(document.getElementById('skillsChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Jobs', data: [], borderColor:'#0b0b0b', backgroundColor:'rgba(11,11,11,.08)', tension:.35, fill:true },
+    { label: 'Courses', data: [], borderColor:'#d3b05b', backgroundColor:'rgba(211,176,91,.18)', tension:.35, fill:true }
+  ] },
+  options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ boxWidth:10 } } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } } }
+});
+
+async function refreshMetrics() {
+  const response = await fetch(metricsUrl, { headers: { 'Accept':'application/json' } });
+  const data = await response.json();
+  document.getElementById('jobCount').textContent = data.counts.jobs;
+  document.getElementById('courseCount').textContent = data.counts.courses;
+  document.getElementById('avgScore').textContent = `${data.average_score}%`;
+  scoreChart.data.labels = data.score_labels;
+  scoreChart.data.datasets[0].data = data.score_buckets;
+  scoreChart.update();
+
+  const labels = [...new Set([...data.job_skills.map(s => s.skill), ...data.course_skills.map(s => s.skill)])].slice(0, 10);
+  skillsChart.data.labels = labels;
+  skillsChart.data.datasets[0].data = labels.map(label => data.job_skills.find(s => s.skill === label)?.frequency || 0);
+  skillsChart.data.datasets[1].data = labels.map(label => data.course_skills.find(s => s.skill === label)?.frequency || 0);
+  skillsChart.update();
+
+  document.getElementById('activityList').innerHTML = data.recent_tasks.map(task => `
+    <div class="activity-row">
+      <div>
+        <div style="font-weight:600;font-size:13px;">${escapeHtml(task.run_name)}</div>
+        <div class="text-muted text-sm">${escapeHtml(task.notes || 'Waiting for progress')}</div>
+        ${task.debug_hint ? `<div class="text-sm" style="color:var(--rust);margin-top:4px;">${escapeHtml(task.debug_hint)}</div>` : ''}
+      </div>
+      <span class="badge ${task.status === 'SUCCESS' ? 'badge-green' : task.status === 'FAILURE' ? 'badge-rust' : task.status === 'STOPPED' ? 'badge-gray' : 'badge-blue'}">${task.status}</span>
+    </div>`).join('') || '<p class="text-muted text-sm">No background activity yet.</p>';
+
+  data.recent_tasks
+    .filter(task => task.status === 'FAILURE' && !toastedTasks.has(task.id))
+    .forEach(task => {
+      toastedTasks.add(task.id);
+      window.showToast?.({
+        title: `${task.run_name} failed`,
+        body: `${task.notes || 'The task failed.'}${task.debug_hint ? ' ' + task.debug_hint : ''}`,
+        type: 'error',
+        timeout: 12000,
+      });
+    });
+}
+
+async function refreshNetwork() {
+  const response = await fetch(networkUrl, { headers: { 'Accept':'application/json' } });
+  const graph = await response.json();
+  const container = document.getElementById('similarityNetwork');
+  const data = { nodes: new vis.DataSet(graph.nodes), edges: new vis.DataSet(graph.edges) };
+  const options = {
+    nodes: { shape:'dot', size:18, borderWidth:1, font:{ face:'Inter, Arial', size:12, color:'#0b0b0b' } },
+    edges: { color:{ color:'#c8b06b', highlight:'#0b0b0b' }, smooth:true, scaling:{ min:1, max:6 } },
+    groups: { course:{ color:{ background:'#0b0b0b', border:'#d3b05b' }, font:{ color:'#0b0b0b' } }, job:{ color:{ background:'#d3b05b', border:'#0b0b0b' } } },
+    physics: { stabilization:true, barnesHut:{ gravitationalConstant:-4200, springLength:130 } },
+    interaction: { hover:true, tooltipDelay:80 }
+  };
+  new vis.Network(container, data, options);
+}
+
+async function pollLiveTask() {
+  if (!liveStatusUrl) return;
+  const response = await fetch(liveStatusUrl, { headers: { 'Accept':'application/json' } });
+  const task = await response.json();
+  liveStatus.textContent = task.status;
+  if (task.status === 'STARTED' || task.status === 'PENDING') {
+    setTimeout(pollLiveTask, 1500);
+  } else {
+    stopLiveBtn.disabled = true;
+    liveStatusUrl = '';
+    if (task.status === 'FAILURE' && !toastedTasks.has(task.id)) {
+      toastedTasks.add(task.id);
+      window.showToast?.({
+        title: `${task.run_name || 'Task'} failed`,
+        body: `${task.notes || 'The task failed.'}${task.debug_hint ? ' ' + task.debug_hint : ''}`,
+        type: 'error',
+        timeout: 12000,
+      });
+    } else if (task.status === 'SUCCESS' && !toastedTasks.has(task.id)) {
+      toastedTasks.add(task.id);
+      window.showToast?.({
+        title: 'Task complete',
+        body: task.notes || 'Background task completed successfully.',
+        type: 'success',
+        timeout: 7000,
+      });
+    }
+  }
+  refreshMetrics();
+  refreshNetwork();
+}
+
+async function startDashboardTask(url, button, startingLabel, enableStop) {
+  button.disabled = true;
+  liveStatus.textContent = startingLabel;
+  try {
+    const response = await fetch(url, {
+      method:'POST',
+      body:new FormData(liveForm),
+      credentials:'same-origin',
+      headers:{ 'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json' }
+    });
+    if (!response.ok) throw new Error('Could not start the background task.');
+    const data = await response.json();
+    liveStatusUrl = data.status_url;
+    if (enableStop) {
+      stopLiveBtn.dataset.stopUrl = `/tasks/${data.task_id}/stop/`;
+      stopLiveBtn.disabled = false;
+    } else {
+      stopLiveBtn.disabled = true;
+    }
+    pollLiveTask();
+  } catch (error) {
+    liveStatus.textContent = 'ERROR';
+    window.showToast?.({
+      title: 'Could not start task',
+      body: error.message,
+      type: 'error',
+      timeout: 9000,
+    });
+  } finally {
+    button.disabled = false;
+  }
+}
+
+startJobsOnlyBtn.addEventListener('click', () => {
+  startDashboardTask(liveForm.dataset.jobsOnlyUrl, startJobsOnlyBtn, 'FETCHING JOBS', true);
+});
+
+startLiveBtn.addEventListener('click', async () => {
+  startDashboardTask(liveForm.action, startLiveBtn, 'STARTING', true);
+});
+
+stopLiveBtn.addEventListener('click', async () => {
+  if (!stopLiveBtn.dataset.stopUrl) return;
+  stopLiveBtn.disabled = true;
+  liveStatus.textContent = 'PAUSING';
+  await fetch(stopLiveBtn.dataset.stopUrl, { method:'POST', credentials:'same-origin', headers:{ 'X-CSRFToken':csrfToken(), 'X-Requested-With':'XMLHttpRequest' } });
+  pollLiveTask();
+});
+
+document.getElementById('runBtn')?.addEventListener('click', function(){ this.innerHTML = '<span class="spinner"></span> Queuing'; this.disabled = true; });
+refreshMetrics();
+refreshNetwork();
+pollLiveTask();
+setInterval(refreshMetrics, 3000);
+setInterval(refreshNetwork, 9000);
 </script>
 {% endblock %}

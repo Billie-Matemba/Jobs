@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Import Jobs — CurriculumMatch{% endblock %}
+{% block title %}Import Jobs - CurriculumMatch{% endblock %}
 {% block page_title %}Import Job Adverts{% endblock %}
 {% block topbar_actions %}
   <a href="{% url 'job-list' %}" class="btn btn-outline">View All Jobs</a>
@@ -21,13 +21,12 @@
         {% csrf_token %}
         <input type="hidden" name="upload_type" value="csv">
         <div class="upload-zone" id="dropZone" onclick="document.getElementById('csvInput').click()">
-          <div class="upload-zone-icon">📄</div>
           <div class="upload-zone-title" id="fileLabel">Drop CSV here or click to browse</div>
           <div class="upload-zone-hint">Required columns: <strong>title</strong>, <strong>description</strong></div>
           <div class="upload-zone-hint mt-2">Optional: company, location, url, salary_min, salary_max</div>
         </div>
         <input type="file" name="csv_file" id="csvInput" accept=".csv" style="display:none" onchange="onFileSelect(this)">
-        <button type="submit" class="btn btn-primary mt-4" style="width:100%;justify-content:center;">↑ Import CSV in Background</button>
+        <button type="submit" class="btn btn-primary mt-4" style="width:100%;justify-content:center;">Import CSV in Background</button>
       </form>
     </div>
   </div>
@@ -37,7 +36,7 @@
     <div class="card">
       <div class="card-label">Fetch from Adzuna API</div>
       <p class="text-muted text-sm mt-4 mb-6">
-        Free API at <a href="https://developer.adzuna.com" target="_blank" style="color:var(--olive);font-weight:600;">developer.adzuna.com</a> —
+        Free API at <a href="https://developer.adzuna.com" target="_blank" style="color:var(--olive);font-weight:600;">developer.adzuna.com</a>.
         set <code>ADZUNA_APP_ID</code> and <code>ADZUNA_APP_KEY</code> in your <code>.env</code>
       </p>
       <form method="post">
@@ -55,7 +54,7 @@
           <label class="form-label">Max Results</label>
           <input class="form-control" type="number" name="max_results" value="50" min="1" max="50">
         </div>
-        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;">⟳ Fetch from Adzuna</button>
+        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;">Fetch from Adzuna</button>
       </form>
     </div>
   </div>
@@ -81,9 +80,9 @@
         </div>
         <div class="form-group">
           <label class="form-label">Full Job Description *</label>
-          <textarea class="form-control" name="description" rows="10" placeholder="Paste the complete job description here…" required></textarea>
+          <textarea class="form-control" name="description" rows="10" placeholder="Paste the complete job description here" required></textarea>
         </div>
-        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;">+ Add Job</button>
+        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;">Add Job</button>
       </form>
     </div>
   </div>
@@ -99,7 +98,7 @@ function switchTab(tab, btn) {
 }
 function onFileSelect(inp) {
   if (inp.files.length) {
-    document.getElementById('fileLabel').textContent = '✓ ' + inp.files[0].name;
+    document.getElementById('fileLabel').textContent = inp.files[0].name;
     document.getElementById('dropZone').style.borderColor = 'var(--olive)';
     document.getElementById('dropZone').style.background = '#f0faf2';
   }

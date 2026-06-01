@@ -8,7 +8,8 @@ from courses.views import (
 from dashboard.views import (
     DashboardView, JobUploadView, JobListView, JobDeleteView,
     RunAnalysisView, AnalysisResultsView,
-    TaskListView, task_status_api, results_json,
+    StartContinuousJobsView, StartJobsOnlyView, StopTaskView, TaskListView,
+    task_status_api, results_json, dashboard_metrics, similarity_network,
 )
 
 urlpatterns = [
@@ -36,10 +37,15 @@ urlpatterns = [
 
     # Analysis
     path("analysis/run/", RunAnalysisView.as_view(), name="run-analysis"),
+    path("analysis/live/start/", StartContinuousJobsView.as_view(), name="start-live-jobs"),
+    path("jobs/fetch-only/start/", StartJobsOnlyView.as_view(), name="start-jobs-only"),
+    path("tasks/<int:pk>/stop/", StopTaskView.as_view(), name="stop-task"),
     path("analysis/results/", AnalysisResultsView.as_view(), name="analysis-results"),
 
     # Tasks
     path("tasks/", TaskListView.as_view(), name="task-list"),
     path("api/task/<int:pk>/", task_status_api, name="task-status-api"),
     path("api/results/", results_json, name="results-json"),
+    path("api/dashboard/metrics/", dashboard_metrics, name="dashboard-metrics"),
+    path("api/dashboard/network/", similarity_network, name="similarity-network"),
 ]

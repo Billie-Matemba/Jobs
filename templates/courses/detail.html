@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ course.name }} — CurriculumMatch{% endblock %}
-{% block page_title %}{{ course.code }} — {{ course.name }}{% endblock %}
+{% block title %}{{ course.name }} - CurriculumMatch{% endblock %}
+{% block page_title %}{{ course.code }} - {{ course.name }}{% endblock %}
 {% block topbar_actions %}
   <a href="{% url 'course-edit' course.pk %}" class="btn btn-outline">Edit Course</a>
-  <a href="{% url 'course-list' %}" class="btn btn-outline">← All Courses</a>
+  <a href="{% url 'course-list' %}" class="btn btn-outline">All Courses</a>
 {% endblock %}
 
 {% block content %}
@@ -40,7 +40,7 @@
             <a href="{% url 'module-edit' mod.pk %}" class="btn btn-outline btn-sm">Edit</a>
             <form method="post" action="{% url 'module-delete' mod.pk %}" onsubmit="return confirm('Delete this module?')">
               {% csrf_token %}
-              <button class="btn btn-danger btn-sm">✕</button>
+              <button class="btn btn-danger btn-sm">Delete</button>
             </form>
           </div>
         </div>
@@ -48,9 +48,8 @@
       {% endfor %}
     {% else %}
       <div class="card" style="text-align:center;padding:40px;color:var(--muted);">
-        <div style="font-size:32px;margin-bottom:10px;">📄</div>
         <div style="font-weight:600;margin-bottom:6px;">No modules yet</div>
-        <div class="text-sm">Add your first module using the form →</div>
+        <div class="text-sm">Add your first module using the form.</div>
       </div>
     {% endif %}
   </div>
@@ -71,7 +70,7 @@
           {% endif %}
         </div>
         {% endfor %}
-        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;margin-top:8px;">+ Add Module</button>
+        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;margin-top:8px;">Add Module</button>
       </form>
     </div>
   </div>

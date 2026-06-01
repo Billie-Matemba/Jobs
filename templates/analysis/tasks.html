@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Background Tasks — CurriculumMatch{% endblock %}
+{% block title %}Background Tasks - CurriculumMatch{% endblock %}
 {% block page_title %}Background Tasks{% endblock %}
 {% block extra_css %}
 <style>
@@ -31,6 +31,7 @@
             {% if task.status == 'SUCCESS' %}badge-green
             {% elif task.status == 'FAILURE' %}badge-rust
             {% elif task.status == 'STARTED' %}badge-blue
+            {% elif task.status == 'STOPPED' %}badge-gray
             {% else %}badge-gray{% endif %}">
             {{ task.status }}
           </span>
@@ -41,18 +42,17 @@
           </div>
           <div class="task-progress-meta">
             <span data-task-progress-label>{{ task.progress }}%</span>
-            <span>{% if task.status == 'SUCCESS' %}Done{% elif task.status == 'FAILURE' %}Stopped{% else %}Working{% endif %}</span>
+            <span>{% if task.status == 'SUCCESS' %}Done{% elif task.status == 'FAILURE' %}Failed{% elif task.status == 'STOPPED' %}Paused{% else %}Working{% endif %}</span>
           </div>
         </td>
         <td class="text-sm text-muted">{{ task.created_at|date:"d M Y H:i" }}</td>
-        <td class="text-sm text-muted">{{ task.finished_at|date:"d M Y H:i"|default:"—" }}</td>
-        <td class="text-sm text-muted">{{ task.notes|truncatechars:80|default:"—" }}</td>
+        <td class="text-sm text-muted">{{ task.finished_at|date:"d M Y H:i"|default:"None" }}</td>
+        <td class="text-sm text-muted">{{ task.notes|truncatechars:80|default:"None" }}</td>
       </tr>
       {% empty %}
       <tr>
         <td colspan="6">
           <div class="empty">
-            <div class="empty-icon">⟳</div>
             <div class="empty-title">No tasks yet</div>
             <div class="empty-text">Tasks appear here when you import jobs or run analysis.</div>
           </div>
@@ -64,14 +64,14 @@
 </div>
 {% if is_paginated %}
 <div class="pagination">
-  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">← Prev</a>{% endif %}
+  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Prev</a>{% endif %}
   <span class="current">{{ page_obj.number }}</span>
   <span class="text-muted">of {{ page_obj.paginator.num_pages }}</span>
-  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Next →</a>{% endif %}
+  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Next</a>{% endif %}
 </div>
 {% endif %}
 {% if has_running %}
-<p class="text-sm text-muted mt-4">Auto-refreshing every 5 seconds…</p>
+<p class="text-sm text-muted mt-4">Auto-refreshing every 5 seconds.</p>
 {% endif %}
 {% endblock %}
 {% block extra_js %}
@@ -79,6 +79,7 @@
 function statusClass(status) {
   if (status === 'SUCCESS') return 'badge badge-green';
   if (status === 'FAILURE') return 'badge badge-rust';
+  if (status === 'STOPPED') return 'badge badge-gray';
   if (status === 'STARTED') return 'badge badge-blue';
   return 'badge badge-gray';
 }

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Edit Module — CurriculumMatch{% endblock %}
+{% block title %}Edit Module - CurriculumMatch{% endblock %}
 {% block page_title %}Edit Module{% endblock %}
 {% block topbar_actions %}
-  <a href="{% url 'course-detail' module.course.pk %}" class="btn btn-outline">← Back to {{ module.course.name }}</a>
+  <a href="{% url 'course-detail' module.course.pk %}" class="btn btn-outline">Back to {{ module.course.name }}</a>
 {% endblock %}
 {% block content %}
 <div style="max-width:700px;">

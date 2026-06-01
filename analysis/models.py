@@ -31,6 +31,10 @@ class GapResult(models.Model):
         unique_together = ("run", "course", "job")
         ordering = ["-similarity_score"]
 
+    @property
+    def similarity_percent(self):
+        return round(self.similarity_score * 100, 1)
+
 
 class SkillMatrix(models.Model):
     run = models.ForeignKey(AnalysisRun, on_delete=models.CASCADE, related_name="skill_matrices")
@@ -44,7 +48,7 @@ class SkillMatrix(models.Model):
 
 
 class TaskRecord(models.Model):
-    STATUS = [("PENDING","Pending"),("STARTED","Started"),("SUCCESS","Success"),("FAILURE","Failure")]
+    STATUS = [("PENDING","Pending"),("STARTED","Started"),("SUCCESS","Success"),("FAILURE","Failure"),("STOPPED","Paused")]
     task_id = models.CharField(max_length=255, unique=False, blank=True)
     run_name = models.CharField(max_length=255)
     status = models.CharField(max_length=20, choices=STATUS, default="PENDING")

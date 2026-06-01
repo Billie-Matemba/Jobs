@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Courses — CurriculumMatch{% endblock %}
+{% block title %}Courses - CurriculumMatch{% endblock %}
 {% block page_title %}Courses{% endblock %}
 {% block topbar_actions %}
-  <a href="{% url 'course-create' %}" class="btn btn-primary">+ New Course</a>
+  <a href="{% url 'course-create' %}" class="btn btn-primary">New Course</a>
 {% endblock %}
 {% block content %}
 {% if courses %}
@@ -31,10 +31,9 @@
 </div>
 {% else %}
 <div class="empty">
-  <div class="empty-icon">📚</div>
   <div class="empty-title">No courses yet</div>
   <div class="empty-text">Add your first course to start mapping skills.</div>
-  <a href="{% url 'course-create' %}" class="btn btn-primary">+ Add First Course</a>
+  <a href="{% url 'course-create' %}" class="btn btn-primary">Add First Course</a>
 </div>
 {% endif %}
 {% endblock %}

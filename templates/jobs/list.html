@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Job Adverts — CurriculumMatch{% endblock %}
+{% block title %}Job Adverts - CurriculumMatch{% endblock %}
 {% block page_title %}Job Adverts{% endblock %}
 {% block topbar_actions %}
-  <a href="{% url 'job-upload' %}" class="btn btn-primary">↑ Import Jobs</a>
+  <a href="{% url 'job-upload' %}" class="btn btn-primary">Import Jobs</a>
 {% endblock %}
 {% block content %}
 <div class="mb-4 text-muted text-sm">{{ paginator.count }} job{{ paginator.count|pluralize }} in database</div>
@@ -24,10 +24,10 @@
       <tr>
         <td>
           <div style="font-weight:600;">{{ job.title }}</div>
-          {% if job.url %}<a href="{{ job.url }}" target="_blank" class="text-sm text-muted">↗ original</a>{% endif %}
+          {% if job.url %}<a href="{{ job.url }}" target="_blank" class="text-sm text-muted">Original advert</a>{% endif %}
         </td>
-        <td class="text-muted">{{ job.company|default:"—" }}</td>
-        <td class="text-muted text-sm">{{ job.location|default:"—" }}</td>
+        <td class="text-muted">{{ job.company|default:"None" }}</td>
+        <td class="text-muted text-sm">{{ job.location|default:"None" }}</td>
         <td>
           <span class="badge {% if job.source == 'adzuna' %}badge-blue{% elif job.source == 'csv' %}badge-olive{% else %}badge-gray{% endif %}">
             {{ job.get_source_display }}
@@ -37,14 +37,14 @@
           {% if job.skills_extracted %}
             <span class="badge badge-green">{{ job.skills_extracted|length }}</span>
           {% else %}
-            <span class="text-muted text-sm">—</span>
+            <span class="text-muted text-sm">None</span>
           {% endif %}
         </td>
         <td class="text-sm text-muted">{{ job.created_at|date:"d M Y" }}</td>
         <td>
           <form method="post" action="{% url 'job-delete' job.pk %}" onsubmit="return confirm('Delete this job?')">
             {% csrf_token %}
-            <button class="btn btn-danger btn-sm">✕</button>
+            <button class="btn btn-danger btn-sm">Delete</button>
           </form>
         </td>
       </tr>
@@ -52,10 +52,9 @@
       <tr>
         <td colspan="7">
           <div class="empty">
-            <div class="empty-icon">📋</div>
             <div class="empty-title">No jobs yet</div>
             <div class="empty-text">Import a CSV or fetch from the Adzuna API.</div>
-            <a href="{% url 'job-upload' %}" class="btn btn-primary">↑ Import Jobs</a>
+            <a href="{% url 'job-upload' %}" class="btn btn-primary">Import Jobs</a>
           </div>
         </td>
       </tr>
@@ -65,10 +64,10 @@
 </div>
 {% if is_paginated %}
 <div class="pagination">
-  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">← Prev</a>{% endif %}
+  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">Prev</a>{% endif %}
   <span class="current">{{ page_obj.number }}</span>
   <span class="text-muted">of {{ page_obj.paginator.num_pages }}</span>
-  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Next →</a>{% endif %}
+  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Next</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

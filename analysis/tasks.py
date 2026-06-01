@@ -8,10 +8,12 @@ and auto-refreshes until status is SUCCESS or FAILURE.
 
 import logging
 import threading
+import time
 
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+STOP_EVENTS = {}
 
 
 # ---------------------------------------------------------------------------
@@ -24,11 +26,16 @@ def _mark(record_id, status, notes="", progress=None):
     updates = {
         "status": status,
         "notes": notes,
-        "finished_at": timezone.now() if status in ("SUCCESS", "FAILURE") else None,
+        "finished_at": timezone.now() if status in ("SUCCESS", "FAILURE", "STOPPED") else None,
     }
     if progress is not None:
         updates["progress"] = max(0, min(100, int(progress)))
     TaskRecord.objects.filter(id=record_id).update(**updates)
+
+
+def _stopped(record_id):
+    event = STOP_EVENTS.get(record_id)
+    return bool(event and event.is_set())
 
 
 def _run_in_thread(fn, *args, **kwargs):
@@ -81,6 +88,73 @@ def _do_adzuna_fetch(keyword, location, max_results, record_id):
         _mark(record_id, "FAILURE", str(exc))
 
 
+def _do_continuous_adzuna_fetch(keyword, location, max_results, interval_seconds, record_id):
+    from jobs.ingestion import fetch_from_adzuna
+
+    cycle = 0
+    try:
+        while not _stopped(record_id):
+            cycle += 1
+            _mark(record_id, "STARTED", f"Jobs cycle {cycle}: fetching up to {max_results} jobs for '{keyword}'...", 10)
+            saved = fetch_from_adzuna(keyword, location, max_results)
+            if _stopped(record_id):
+                break
+
+            _mark(record_id, "STARTED", f"Jobs cycle {cycle}: fetched {saved} new jobs. Waiting {interval_seconds} seconds before the next fetch...", 85)
+            for remaining in range(max(1, int(interval_seconds)), 0, -1):
+                if _stopped(record_id):
+                    break
+                if remaining == interval_seconds or remaining <= 5 or remaining % 10 == 0:
+                    _mark(record_id, "STARTED", f"Jobs cycle {cycle}: next fetch in {remaining} seconds.", 90)
+                time.sleep(1)
+
+        _mark(record_id, "STOPPED", "Jobs-only fetch loop paused by user.", 100)
+    except Exception as exc:
+        logger.error(f"Continuous Adzuna fetch failed: {exc}", exc_info=True)
+        _mark(record_id, "FAILURE", str(exc))
+    finally:
+        STOP_EVENTS.pop(record_id, None)
+
+
+def _do_continuous_job_cycle(keyword, location, max_results, interval_seconds, record_id):
+    from analysis.services import run_gap_analysis
+    from jobs.ingestion import fetch_from_adzuna
+
+    cycle = 0
+    try:
+        while not _stopped(record_id):
+            cycle += 1
+            _mark(record_id, "STARTED", f"Cycle {cycle}: fetching jobs for '{keyword}'...", 5)
+            saved = fetch_from_adzuna(keyword, location, max_results)
+            if _stopped(record_id):
+                break
+
+            _mark(record_id, "STARTED", f"Cycle {cycle}: fetched {saved} new jobs. Running analysis...", 35)
+
+            def report(percent, notes):
+                if _stopped(record_id):
+                    raise InterruptedError("Live pipeline paused by user.")
+                mapped = 35 + int(55 * max(0, min(100, percent)) / 100)
+                _mark(record_id, "STARTED", f"Cycle {cycle}: {notes}", mapped)
+
+            run = run_gap_analysis(run_name=f"Live Run {cycle}", progress_callback=report)
+            _mark(record_id, "STARTED", f"Cycle {cycle}: analysis #{run.id} complete. Waiting for next fetch...", 95)
+
+            for _ in range(max(1, int(interval_seconds))):
+                if _stopped(record_id):
+                    break
+                time.sleep(1)
+
+        _mark(record_id, "STOPPED", "Live pipeline paused by user.", 100)
+    except InterruptedError:
+        _mark(record_id, "STOPPED", "Live pipeline paused by user.", 100)
+    except Exception as exc:
+        logger.error(f"Continuous job cycle failed: {exc}", exc_info=True)
+        _mark(record_id, "FAILURE", str(exc))
+    finally:
+        STOP_EVENTS.pop(record_id, None)
+
+
 # ---------------------------------------------------------------------------
 # Public API — drop-in replacements for the old Celery .delay() calls
 # ---------------------------------------------------------------------------
@@ -98,3 +172,25 @@ def import_csv_task(csv_bytes, record_id=None):
 def fetch_adzuna_task(keyword, location="south africa", max_results=50, record_id=None):
     """Fetch Adzuna jobs in a background thread."""
     _run_in_thread(_do_adzuna_fetch, keyword, location, max_results, record_id)
+
+
+def start_continuous_job_task(keyword, location="south africa", max_results=50, interval_seconds=30, record_id=None):
+    """Continuously fetch jobs and run gap analysis until paused."""
+    STOP_EVENTS[record_id] = threading.Event()
+    _run_in_thread(_do_continuous_job_cycle, keyword, location, max_results, interval_seconds, record_id)
+
+
+def start_continuous_adzuna_task(keyword, location="south africa", max_results=50, interval_seconds=30, record_id=None):
+    """Continuously fetch Adzuna jobs only until paused."""
+    STOP_EVENTS[record_id] = threading.Event()
+    _run_in_thread(_do_continuous_adzuna_fetch, keyword, location, max_results, interval_seconds, record_id)
+
+
+def stop_task(record_id):
+    event = STOP_EVENTS.get(record_id)
+    if event:
+        event.set()
+        _mark(record_id, "STARTED", "Pause requested. Finishing the current step...", None)
+        return True
+    _mark(record_id, "STOPPED", "Pause requested.", 100)
+    return False
