@@ -33,7 +33,7 @@
             {% elif task.status == 'STARTED' %}badge-blue
             {% elif task.status == 'STOPPED' %}badge-gray
             {% else %}badge-gray{% endif %}">
-            {{ task.status }}
+            {% if task.run_name|slice:":9" == "Jobs Only" and task.status == "STARTED" %}RUNNING{% else %}{{ task.status }}{% endif %}
           </span>
         </td>
         <td class="task-progress">
@@ -42,7 +42,7 @@
           </div>
           <div class="task-progress-meta">
             <span data-task-progress-label>{{ task.progress }}%</span>
-            <span>{% if task.status == 'SUCCESS' %}Done{% elif task.status == 'FAILURE' %}Failed{% elif task.status == 'STOPPED' %}Paused{% else %}Working{% endif %}</span>
+            <span>{% if task.status == 'SUCCESS' %}Done{% elif task.status == 'FAILURE' %}Failed{% elif task.status == 'STOPPED' %}Paused{% elif task.run_name|slice:":9" == "Jobs Only" %}Continuous{% else %}Working{% endif %}</span>
           </div>
         </td>
         <td class="text-sm text-muted">{{ task.created_at|date:"d M Y H:i" }}</td>
@@ -91,7 +91,7 @@ function updateTaskRow(row, data) {
   const label = row.querySelector('[data-task-progress-label]');
   const notes = row.querySelector('[data-task-notes]');
 
-  status.textContent = data.status;
+  status.textContent = data.run_name?.startsWith('Jobs Only') && data.status === 'STARTED' ? 'RUNNING' : data.status;
   status.className = statusClass(data.status);
   fill.style.width = `${pct}%`;
   label.textContent = `${pct}%`;

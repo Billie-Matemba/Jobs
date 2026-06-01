@@ -86,3 +86,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 ADZUNA_APP_ID = os.environ.get("ADZUNA_APP_ID", "")
 ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "")
 ADZUNA_COUNTRY = os.environ.get("ADZUNA_COUNTRY", "za")
+
+# Semantic scoring
+SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
+SEMANTIC_SCORE_WEIGHT = float(os.environ.get("SEMANTIC_SCORE_WEIGHT", "0.75"))
+SKILL_SCORE_WEIGHT = float(os.environ.get("SKILL_SCORE_WEIGHT", "0.25"))
+TOP_MODULE_MATCH_COUNT = int(os.environ.get("TOP_MODULE_MATCH_COUNT", "3"))
+SPACY_MODEL_NAME = os.environ.get("SPACY_MODEL_NAME", "en_core_web_sm")

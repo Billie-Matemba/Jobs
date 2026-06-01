@@ -82,11 +82,29 @@
 
   <div class="results-visuals">
     <div class="card">
-      <div class="section-hd"><h2>Cosine Score Spread</h2></div>
+      <div class="section-hd">
+        <h2>Cosine Score Spread</h2>
+        <span class="graph-insight">
+          <button class="graph-insight-btn" type="button" aria-label="Explain cosine score spread"></button>
+          <span class="graph-insight-popover">
+            <span class="graph-insight-title">Score reading</span>
+            <span class="graph-insight-body" id="resultsScoreInsight">Waiting for score data.</span>
+          </span>
+        </span>
+      </div>
       <div class="chart-box"><canvas id="resultsScoreChart"></canvas></div>
     </div>
     <div class="card">
-      <div class="section-hd"><h2>Matched vs Missing Skills</h2></div>
+      <div class="section-hd">
+        <h2>Matched vs Missing Skills</h2>
+        <span class="graph-insight">
+          <button class="graph-insight-btn" type="button" aria-label="Explain matched versus missing skills"></button>
+          <span class="graph-insight-popover">
+            <span class="graph-insight-title">Gap reading</span>
+            <span class="graph-insight-body" id="gapInsight">Waiting for skill gap data.</span>
+          </span>
+        </span>
+      </div>
       <div class="chart-box"><canvas id="gapChart"></canvas></div>
     </div>
   </div>
@@ -302,11 +320,36 @@ const matchedCounts = [{% for r in results %}{{ r.matched_skills|length }},{% en
 const missingCounts = [{% for r in results %}{{ r.missing_skills|length }},{% endfor %}];
 const buckets = [0, 0, 0, 0, 0];
 resultScores.forEach(score => buckets[Math.min(4, Math.floor(Math.max(0, score) / 20))] += 1);
+function setInsight(id, text) {
+  const target = document.getElementById(id);
+  if (target) target.textContent = text;
+}
+function explainResultScores(scores, scoreBuckets) {
+  if (!scores.length) return 'This run has no scored matches yet. Check that courses have module content and jobs have descriptions.';
+  const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  const strong = scores.filter(score => score >= 70).length;
+  const weak = scores.filter(score => score < 40).length;
+  if (average >= 75 || strong / scores.length >= 0.4) return `Strong run: average score is ${average.toFixed(1)}%, and ${strong} matches are 70% or higher. Prioritize those for evidence of alignment.`;
+  if (weak / scores.length >= 0.6) return `Weak run: ${weak} of ${scores.length} matches are below 40%. The course language and market language need closer inspection.`;
+  if (average >= 55) return `Moderate run: average score is ${average.toFixed(1)}%. Some pairings are useful, but missing skills still matter.`;
+  return `Mixed-to-low run: average score is ${average.toFixed(1)}%. Use the detailed rows to find whether low scores come from missing skills or unrelated job families.`;
+}
+function explainSkillGaps(matched, missing) {
+  const totalMatched = matched.reduce((sum, value) => sum + value, 0);
+  const totalMissing = missing.reduce((sum, value) => sum + value, 0);
+  const total = totalMatched + totalMissing;
+  if (!total) return 'No matched or missing skills were extracted. Add richer module/job descriptions or expand the skill dictionary.';
+  const coverage = totalMatched / total;
+  if (coverage >= 0.75) return `High skill coverage: ${Math.round(coverage * 100)}% of extracted skill evidence is matched. Remaining gaps are likely targeted improvements.`;
+  if (coverage >= 0.45) return `Partial skill coverage: ${Math.round(coverage * 100)}% matched. Focus on jobs with high missing counts before curriculum changes.`;
+  return `Low skill coverage: only ${Math.round(coverage * 100)}% matched. The curriculum is missing many skills requested by the selected jobs.`;
+}
 new Chart(document.getElementById('resultsScoreChart'), {
   type:'bar',
   data:{ labels:['0-20','20-40','40-60','60-80','80-100'], datasets:[{ data:buckets, backgroundColor:'#d3b05b', borderColor:'#0b0b0b', borderWidth:1 }] },
   options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } } }
 });
+setInsight('resultsScoreInsight', explainResultScores(resultScores, buckets));
 new Chart(document.getElementById('gapChart'), {
   type:'line',
   data:{ labels:resultScores.map((_, i) => `#${i + 1}`), datasets:[
@@ -315,6 +358,7 @@ new Chart(document.getElementById('gapChart'), {
   ] },
   options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ boxWidth:10 } } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ display:false } } }
 });
+setInsight('gapInsight', explainSkillGaps(matchedCounts, missingCounts));
 </script>
 {% endif %}
 {% endblock %}

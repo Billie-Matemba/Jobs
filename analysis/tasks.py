@@ -89,23 +89,89 @@ def _do_adzuna_fetch(keyword, location, max_results, record_id):
 
 
 def _do_continuous_adzuna_fetch(keyword, location, max_results, interval_seconds, record_id):
-    from jobs.ingestion import fetch_from_adzuna
+    from jobs.ingestion import AdzunaAPIError, fetch_adzuna_page
 
     cycle = 0
+    page = 1
+    session_saved = 0
     try:
         while not _stopped(record_id):
             cycle += 1
-            _mark(record_id, "STARTED", f"Jobs cycle {cycle}: fetching up to {max_results} jobs for '{keyword}'...", 10)
-            saved = fetch_from_adzuna(keyword, location, max_results)
+            _mark(record_id, "STARTED", f"Jobs cycle {cycle}: fetching Adzuna page {page} for '{keyword}'...", 10)
+            try:
+                def report_fetch_progress(progress):
+                    processed = progress["processed"]
+                    seen = progress["seen"]
+                    saved = progress["saved"]
+                    duplicates = progress["duplicates"]
+                    db_total = progress.get("db_total", 0)
+                    pct = 15 + int(60 * processed / max(1, seen or max_results))
+                    _mark(
+                        record_id,
+                        "STARTED",
+                        f"Jobs cycle {cycle}: live count page {progress['page']} - saved {saved} this page, {session_saved + saved} this session, DB total {db_total}. Processed {processed}/{seen}, skipped {duplicates}.",
+                        pct,
+                    )
+
+                result = fetch_adzuna_page(keyword, location, page=page, per_page=max_results, progress_callback=report_fetch_progress)
+            except ValueError:
+                raise
+            except AdzunaAPIError as exc:
+                logger.warning("Adzuna API issue during jobs-only cycle: %s", exc, exc_info=True)
+                prefix = "Adzuna API limit reached" if exc.limit_reached else "Adzuna API error"
+                if not exc.retryable:
+                    raise
+                _mark(record_id, "STARTED", f"Jobs cycle {cycle}: {prefix}. {exc} Retrying in {interval_seconds} seconds...", 20)
+                for remaining in range(max(1, int(interval_seconds)), 0, -1):
+                    if _stopped(record_id):
+                        break
+                    if remaining == interval_seconds or remaining <= 5 or remaining % 10 == 0:
+                        _mark(record_id, "STARTED", f"Jobs cycle {cycle}: {prefix}. Retry in {remaining} seconds. Next Adzuna page: {page}.", 20)
+                    time.sleep(1)
+                continue
+            except Exception as exc:
+                logger.warning("Adzuna jobs-only cycle failed; retrying: %s", exc, exc_info=True)
+                _mark(record_id, "STARTED", f"Jobs cycle {cycle}: fetch error ({exc}). Retrying in {interval_seconds} seconds...", 20)
+                for remaining in range(max(1, int(interval_seconds)), 0, -1):
+                    if _stopped(record_id):
+                        break
+                    if remaining == interval_seconds or remaining <= 5 or remaining % 10 == 0:
+                        _mark(record_id, "STARTED", f"Jobs cycle {cycle}: retry in {remaining} seconds. Next Adzuna page: {page}.", 20)
+                    time.sleep(1)
+                continue
             if _stopped(record_id):
                 break
 
-            _mark(record_id, "STARTED", f"Jobs cycle {cycle}: fetched {saved} new jobs. Waiting {interval_seconds} seconds before the next fetch...", 85)
+            saved = result["saved"]
+            duplicates = result["duplicates"]
+            seen = result["seen"]
+            total_count = result.get("total_count", 0)
+            db_total = result.get("db_total", 0)
+            session_saved += saved
+            if not seen and total_count == 0:
+                page = 1
+                _mark(record_id, "STARTED", f"Jobs cycle {cycle}: Adzuna returned 0 results for '{keyword}' in '{location}'. DB total remains {db_total}. Waiting {interval_seconds} seconds before retrying.", 85)
+            elif not seen:
+                page = 1
+                _mark(record_id, "STARTED", f"Jobs cycle {cycle}: reached the end of Adzuna results ({total_count} available). DB total {db_total}. Restarting from page 1 after {interval_seconds} seconds.", 85)
+            elif seen and saved == 0 and duplicates == seen:
+                if result["has_more"]:
+                    page += 1
+                else:
+                    page = 1
+                _mark(record_id, "STARTED", f"Jobs cycle {cycle}: page {result['page']} had {duplicates} duplicate jobs and 0 new saves. DB total remains {db_total}; {session_saved} new jobs saved this session. Next page: {page}.", 85)
+            elif seen and result["has_more"]:
+                page += 1
+            else:
+                page = 1
+
+            if seen and not (saved == 0 and duplicates == seen):
+                _mark(record_id, "STARTED", f"Jobs cycle {cycle}: page {result['page']} added {saved} new jobs, skipped {duplicates} duplicates out of {seen}. DB total {db_total}; {session_saved} new this session. Total available: {total_count}. Waiting {interval_seconds} seconds before the next fetch...", 85)
             for remaining in range(max(1, int(interval_seconds)), 0, -1):
                 if _stopped(record_id):
                     break
                 if remaining == interval_seconds or remaining <= 5 or remaining % 10 == 0:
-                    _mark(record_id, "STARTED", f"Jobs cycle {cycle}: next fetch in {remaining} seconds.", 90)
+                    _mark(record_id, "STARTED", f"Jobs cycle {cycle}: waiting {remaining} seconds, still active. DB total {db_total}; {session_saved} new this session. Next Adzuna page: {page}.", 90)
                 time.sleep(1)
 
         _mark(record_id, "STOPPED", "Jobs-only fetch loop paused by user.", 100)

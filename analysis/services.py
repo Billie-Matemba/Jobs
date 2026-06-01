@@ -3,15 +3,13 @@ Core gap analysis orchestrator.
 """
 
 import logging
-import numpy as np
 
 from courses.models import Course, Module
 from jobs.models import JobAdvert
 from .models import AnalysisRun, GapResult, SkillMatrix
-from .nlp_pipeline import (
-    train_word2vec, document_vector, compute_similarity,
-    compute_gap, extract_skills, build_skill_matrix,
-)
+from .nlp_pipeline import compute_gap
+from .semantic_similarity import SemanticSimilarityService
+from .spacyskillextraction import SpacySkillExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +45,15 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
         job_map = {j.id: j.description for j in jobs if j.description.strip()}
 
         all_texts = list(module_map.values()) + list(job_map.values())
-        logger.info(f"Training Word2Vec on {len(all_texts)} documents…")
-        report(12, f"Training Word2Vec on {len(all_texts)} documents...")
-        model = train_word2vec(all_texts)
+        logger.info("Preparing semantic scorer on %s documents...", len(all_texts))
+        report(12, f"Preparing semantic scorer on {len(all_texts)} documents...")
+        scorer = SemanticSimilarityService(
+            all_texts,
+            progress_callback=lambda message: report(14, message),
+        )
+        report(18, f"Semantic scorer ready using {scorer.backend}.")
+        skill_extractor = SpacySkillExtractor()
+        report(22, f"Skill extractor ready using {skill_extractor.backend}.")
         report(25, "Extracting module skills...")
 
         # Vectorise modules
@@ -57,8 +61,8 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
         module_items = list(module_map.items())
         for index, (mid, text) in enumerate(module_items, start=1):
             module_data[mid] = {
-                "vector": document_vector(model, text),
-                "skills": extract_skills(text),
+                "vector": scorer.vectorize(text),
+                "skills": skill_extractor.extract(text),
             }
             Module.objects.filter(id=mid).update(
                 vector=module_data[mid]["vector"].tolist(),
@@ -73,8 +77,8 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
         job_items = list(job_map.items())
         for index, (jid, text) in enumerate(job_items, start=1):
             job_data[jid] = {
-                "vector": document_vector(model, text),
-                "skills": extract_skills(text),
+                "vector": scorer.vectorize(text),
+                "skills": skill_extractor.extract(text),
             }
             JobAdvert.objects.filter(id=jid).update(
                 vector=job_data[jid]["vector"].tolist(),
@@ -92,14 +96,15 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
             if not mids:
                 continue
 
-            course_vec = np.mean([module_data[mid]["vector"] for mid in mids], axis=0)
+            course_vectors = [module_data[mid]["vector"] for mid in mids]
             course_skills = list({s for mid in mids for s in module_data[mid]["skills"]})
 
             for job in jobs:
                 if job.id not in job_data:
                     continue
-                score = compute_similarity(course_vec, job_data[job.id]["vector"])
                 matched, missing, extra = compute_gap(course_skills, job_data[job.id]["skills"])
+                semantic_score = scorer.course_job_semantic_score(course_vectors, job_data[job.id]["vector"])
+                score = scorer.final_score(semantic_score, matched, job_data[job.id]["skills"]).final_score
                 gap_results.append(GapResult(
                     run=run, course=course, job=job,
                     similarity_score=score,
@@ -120,11 +125,11 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
         report(92, "Building skill matrices...")
         SkillMatrix.objects.bulk_create([
             SkillMatrix(run=run, source="jobs", skill=s, frequency=f)
-            for s, f in build_skill_matrix(list(job_map.values()))
+            for s, f in skill_extractor.build_skill_matrix(list(job_map.values()))
         ], ignore_conflicts=True)
         SkillMatrix.objects.bulk_create([
             SkillMatrix(run=run, source="courses", skill=s, frequency=f)
-            for s, f in build_skill_matrix(list(module_map.values()))
+            for s, f in skill_extractor.build_skill_matrix(list(module_map.values()))
         ], ignore_conflicts=True)
 
         run.status = "done"

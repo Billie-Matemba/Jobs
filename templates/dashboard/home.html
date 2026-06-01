@@ -65,6 +65,45 @@
 .activity-list { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
 .activity-row { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--rule); }
 .activity-row:last-child { border-bottom:0; }
+.activity-row.is-running {
+  position:relative;
+  padding-left:18px;
+}
+.activity-row.is-running:before {
+  content:"";
+  position:absolute;
+  left:0;
+  top:18px;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--gold);
+  box-shadow:0 0 0 0 rgba(211,176,91,.55);
+  animation:fetchPulse 1.3s ease-out infinite;
+}
+.fetch-strip {
+  height:3px;
+  margin-top:8px;
+  overflow:hidden;
+  border-radius:999px;
+  background:var(--soft);
+}
+.fetch-strip span {
+  display:block;
+  width:42%;
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg, transparent, var(--gold), transparent);
+  animation:fetchSweep 1.15s ease-in-out infinite;
+}
+@keyframes fetchPulse {
+  70% { box-shadow:0 0 0 9px rgba(211,176,91,0); }
+  100% { box-shadow:0 0 0 0 rgba(211,176,91,0); }
+}
+@keyframes fetchSweep {
+  from { transform:translateX(-110%); }
+  to { transform:translateX(250%); }
+}
 .match-list { margin-top:14px; display:flex; flex-direction:column; gap:10px; }
 .match-row { display:grid; grid-template-columns:1fr 92px; gap:12px; align-items:center; }
 .match-name { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -88,7 +127,7 @@
 
     <form class="live-form" id="livePipelineForm" action="{% url 'start-live-jobs' %}" data-jobs-only-url="{% url 'start-jobs-only' %}">
       {% csrf_token %}
-      <input class="form-control" name="keyword" value="data analyst" placeholder="Keyword">
+      <input class="form-control" name="keyword" value="MBA" placeholder="Keyword">
       <input class="form-control" name="location" value="south africa" placeholder="Location">
       <input class="form-control" name="max_results" type="number" min="1" max="50" value="50" aria-label="Max results">
       <input class="form-control" name="interval_seconds" type="number" min="10" max="3600" value="45" aria-label="Seconds between cycles">
@@ -134,7 +173,16 @@
   <div class="card visual-card">
     <div class="section-hd">
       <h2>Cosine Similarity Network</h2>
-      <span class="badge badge-gray">NetworkX data</span>
+      <div class="flex gap-2">
+        <span class="badge badge-gray">NetworkX data</span>
+        <span class="graph-insight">
+          <button class="graph-insight-btn" type="button" aria-label="Explain cosine similarity network"></button>
+          <span class="graph-insight-popover">
+            <span class="graph-insight-title">Network reading</span>
+            <span class="graph-insight-body" id="networkInsight">Waiting for network data.</span>
+          </span>
+        </span>
+      </div>
     </div>
     <div id="similarityNetwork"></div>
   </div>
@@ -142,7 +190,16 @@
   <div class="card visual-card">
     <div class="section-hd">
       <h2>Score Distribution</h2>
-      <span class="badge badge-gold">Live</span>
+      <div class="flex gap-2">
+        <span class="badge badge-gold">Live</span>
+        <span class="graph-insight">
+          <button class="graph-insight-btn" type="button" aria-label="Explain score distribution"></button>
+          <span class="graph-insight-popover">
+            <span class="graph-insight-title">Score reading</span>
+            <span class="graph-insight-body" id="scoreInsight">Waiting for score data.</span>
+          </span>
+        </span>
+      </div>
     </div>
     <div class="chart-box"><canvas id="scoreChart"></canvas></div>
   </div>
@@ -152,7 +209,16 @@
   <div class="card">
     <div class="section-hd">
       <h2>Skill Demand vs Curriculum</h2>
-      <span class="badge badge-gray">Top terms</span>
+      <div class="flex gap-2">
+        <span class="badge badge-gray">Top terms</span>
+        <span class="graph-insight">
+          <button class="graph-insight-btn" type="button" aria-label="Explain skill demand chart"></button>
+          <span class="graph-insight-popover">
+            <span class="graph-insight-title">Skill reading</span>
+            <span class="graph-insight-body" id="skillsInsight">Waiting for skill data.</span>
+          </span>
+        </span>
+      </div>
     </div>
     <div class="chart-box"><canvas id="skillsChart"></canvas></div>
   </div>
@@ -191,7 +257,9 @@ const startLiveBtn = document.getElementById('startLiveBtn');
 const stopLiveBtn = document.getElementById('stopLiveBtn');
 const liveStatus = document.getElementById('liveStatus');
 let liveStatusUrl = "{% if live_task %}{% url 'task-status-api' live_task.id %}{% endif %}";
+let autoStartJobsOnly = {% if should_autostart_jobs %}true{% else %}false{% endif %};
 const toastedTasks = new Set();
+let metricsLoaded = false;
 
 function csrfToken() {
   return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
@@ -205,6 +273,51 @@ function escapeHtml(value) {
     '"':'&quot;',
     "'":'&#39;'
   }[char]));
+}
+
+function setInsight(id, text) {
+  const target = document.getElementById(id);
+  if (target) target.textContent = text;
+}
+
+function explainScoreDistribution(buckets, averageScore) {
+  const total = buckets.reduce((sum, value) => sum + value, 0);
+  if (!total) return 'No match scores exist yet. Run analysis after courses and jobs are available.';
+  const strong = (buckets[3] || 0) + (buckets[4] || 0);
+  const weak = (buckets[0] || 0) + (buckets[1] || 0);
+  const strongShare = strong / total;
+  const weakShare = weak / total;
+  if (averageScore >= 75 || strongShare >= 0.5) return `Strong alignment signal: ${Math.round(strongShare * 100)}% of matches are in the 60%+ bands, with an average score of ${averageScore}%.`;
+  if (averageScore >= 55 || strongShare >= 0.25) return `Moderate alignment: ${Math.round(strongShare * 100)}% of matches are above 60%. Review missing skills before changing curriculum.`;
+  if (weakShare >= 0.6) return `Weak alignment signal: ${Math.round(weakShare * 100)}% of matches are below 40%. The curriculum and job language are currently far apart.`;
+  return `Mixed alignment: scores are spread across bands. Use the match matrix to inspect which courses drive the stronger and weaker results.`;
+}
+
+function explainSkills(labels, jobValues, courseValues) {
+  if (!labels.length) return 'No extracted skills yet. Run analysis to compare job demand against curriculum coverage.';
+  const gaps = labels.map((label, index) => ({
+    label,
+    gap: (jobValues[index] || 0) - (courseValues[index] || 0),
+    job: jobValues[index] || 0,
+    course: courseValues[index] || 0,
+  })).sort((a, b) => b.gap - a.gap);
+  const biggest = gaps[0];
+  const covered = gaps.filter(item => item.gap <= 0).length;
+  if (biggest.gap >= 5) return `${biggest.label} is the clearest market gap: job demand is ${biggest.job}, while curriculum coverage is ${biggest.course}.`;
+  if (covered / labels.length >= 0.6) return `Coverage is healthy: ${covered} of ${labels.length} top skills are matched or over-represented in curriculum content.`;
+  if (biggest.gap > 0) return `${biggest.label} is the current priority gap, but the difference is still moderate. Watch it as more jobs are fetched.`;
+  return 'The top extracted skills are balanced or curriculum-heavy. This suggests coverage is keeping pace with current job demand.';
+}
+
+function explainNetwork(graph) {
+  const nodeCount = graph.nodes.length;
+  const edgeCount = graph.edges.length;
+  if (!nodeCount || !edgeCount) return 'No network edges yet. The graph appears after analysis creates course-to-job similarity scores.';
+  const strongEdges = graph.edges.filter(edge => Number(edge.value || 0) >= 70).length;
+  const weakEdges = graph.edges.filter(edge => Number(edge.value || 0) < 40).length;
+  if (strongEdges >= Math.max(2, edgeCount * 0.35)) return `Dense strong-match network: ${strongEdges} of ${edgeCount} links are 70%+. Courses are connecting well to the current job set.`;
+  if (weakEdges >= edgeCount * 0.6) return `Sparse weak-match network: ${weakEdges} of ${edgeCount} links are below 40%. This points to low semantic overlap or missing course content.`;
+  return `Mixed network: ${nodeCount} nodes and ${edgeCount} similarity links. The strongest edges show which course-job pairs deserve review first.`;
 }
 
 const scoreChart = new Chart(document.getElementById('scoreChart'), {
@@ -231,39 +344,53 @@ async function refreshMetrics() {
   scoreChart.data.labels = data.score_labels;
   scoreChart.data.datasets[0].data = data.score_buckets;
   scoreChart.update();
+  setInsight('scoreInsight', explainScoreDistribution(data.score_buckets, data.average_score));
 
   const labels = [...new Set([...data.job_skills.map(s => s.skill), ...data.course_skills.map(s => s.skill)])].slice(0, 10);
+  const jobValues = labels.map(label => data.job_skills.find(s => s.skill === label)?.frequency || 0);
+  const courseValues = labels.map(label => data.course_skills.find(s => s.skill === label)?.frequency || 0);
   skillsChart.data.labels = labels;
-  skillsChart.data.datasets[0].data = labels.map(label => data.job_skills.find(s => s.skill === label)?.frequency || 0);
-  skillsChart.data.datasets[1].data = labels.map(label => data.course_skills.find(s => s.skill === label)?.frequency || 0);
+  skillsChart.data.datasets[0].data = jobValues;
+  skillsChart.data.datasets[1].data = courseValues;
   skillsChart.update();
+  setInsight('skillsInsight', explainSkills(labels, jobValues, courseValues));
 
   document.getElementById('activityList').innerHTML = data.recent_tasks.map(task => `
-    <div class="activity-row">
+    <div class="activity-row ${task.status === 'STARTED' || task.status === 'PENDING' ? 'is-running' : ''}">
       <div>
         <div style="font-weight:600;font-size:13px;">${escapeHtml(task.run_name)}</div>
         <div class="text-muted text-sm">${escapeHtml(task.notes || 'Waiting for progress')}</div>
+        ${task.run_name.startsWith('Jobs Only') && task.status === 'STARTED' ? '<div class="text-sm" style="color:var(--gold-dark);margin-top:4px;">Continuous fetch is running. It will only stop when you press Pause.</div>' : ''}
         ${task.debug_hint ? `<div class="text-sm" style="color:var(--rust);margin-top:4px;">${escapeHtml(task.debug_hint)}</div>` : ''}
+        ${task.status === 'STARTED' || task.status === 'PENDING' ? '<div class="fetch-strip" aria-hidden="true"><span></span></div>' : ''}
       </div>
-      <span class="badge ${task.status === 'SUCCESS' ? 'badge-green' : task.status === 'FAILURE' ? 'badge-rust' : task.status === 'STOPPED' ? 'badge-gray' : 'badge-blue'}">${task.status}</span>
+      <span class="badge ${task.status === 'SUCCESS' ? 'badge-green' : task.status === 'FAILURE' ? 'badge-rust' : task.status === 'STOPPED' ? 'badge-gray' : 'badge-blue'}">${task.run_name.startsWith('Jobs Only') && task.status === 'STARTED' ? 'RUNNING' : task.status}</span>
     </div>`).join('') || '<p class="text-muted text-sm">No background activity yet.</p>';
 
-  data.recent_tasks
-    .filter(task => task.status === 'FAILURE' && !toastedTasks.has(task.id))
-    .forEach(task => {
-      toastedTasks.add(task.id);
-      window.showToast?.({
-        title: `${task.run_name} failed`,
-        body: `${task.notes || 'The task failed.'}${task.debug_hint ? ' ' + task.debug_hint : ''}`,
-        type: 'error',
-        timeout: 12000,
+  if (!metricsLoaded) {
+    data.recent_tasks
+      .filter(task => task.status === 'FAILURE')
+      .forEach(task => toastedTasks.add(task.id));
+    metricsLoaded = true;
+  } else {
+    data.recent_tasks
+      .filter(task => task.status === 'FAILURE' && !toastedTasks.has(task.id))
+      .forEach(task => {
+        toastedTasks.add(task.id);
+        window.showToast?.({
+          title: `${task.run_name} failed`,
+          body: `${task.notes || 'The task failed.'}${task.debug_hint ? ' ' + task.debug_hint : ''}`,
+          type: 'error',
+          timeout: 12000,
+        });
       });
-    });
+  }
 }
 
 async function refreshNetwork() {
   const response = await fetch(networkUrl, { headers: { 'Accept':'application/json' } });
   const graph = await response.json();
+  setInsight('networkInsight', explainNetwork(graph));
   const container = document.getElementById('similarityNetwork');
   const data = { nodes: new vis.DataSet(graph.nodes), edges: new vis.DataSet(graph.edges) };
   const options = {
@@ -309,6 +436,7 @@ async function pollLiveTask() {
 }
 
 async function startDashboardTask(url, button, startingLabel, enableStop) {
+  if (!url || !button) return;
   button.disabled = true;
   liveStatus.textContent = startingLabel;
   try {
@@ -342,10 +470,12 @@ async function startDashboardTask(url, button, startingLabel, enableStop) {
 }
 
 startJobsOnlyBtn.addEventListener('click', () => {
+  autoStartJobsOnly = false;
   startDashboardTask(liveForm.dataset.jobsOnlyUrl, startJobsOnlyBtn, 'FETCHING JOBS', true);
 });
 
 startLiveBtn.addEventListener('click', async () => {
+  autoStartJobsOnly = false;
   startDashboardTask(liveForm.action, startLiveBtn, 'STARTING', true);
 });
 
@@ -361,6 +491,17 @@ document.getElementById('runBtn')?.addEventListener('click', function(){ this.in
 refreshMetrics();
 refreshNetwork();
 pollLiveTask();
+if (autoStartJobsOnly && !liveStatusUrl) {
+  setTimeout(() => {
+    window.showToast?.({
+      title: 'Jobs fetcher started',
+      body: 'Dashboard auto-started jobs-only fetching. It will continue until you press Pause.',
+      type: 'info',
+      timeout: 7000,
+    });
+    startDashboardTask(liveForm.dataset.jobsOnlyUrl, startJobsOnlyBtn, 'FETCHING JOBS', true);
+  }, 900);
+}
 setInterval(refreshMetrics, 3000);
 setInterval(refreshNetwork, 9000);
 </script>

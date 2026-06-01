@@ -508,6 +508,67 @@ body {
   from { opacity:0; transform:translateY(8px); }
   to { opacity:1; transform:translateY(0); }
 }
+.graph-insight {
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+}
+.graph-insight-btn {
+  width:30px;
+  height:30px;
+  border-radius:999px;
+  border:1px solid #dcc06f;
+  background:#fff8df;
+  color:#0b0b0b;
+  cursor:help;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 8px 20px rgba(11,11,11,.08);
+}
+.graph-insight-btn::before {
+  content:"";
+  width:11px;
+  height:13px;
+  border:2px solid currentColor;
+  border-bottom-width:4px;
+  border-radius:50% 50% 42% 42%;
+  box-shadow:0 7px 0 -4px currentColor;
+}
+.graph-insight-popover {
+  position:absolute;
+  right:0;
+  top:38px;
+  z-index:30;
+  width:min(340px, calc(100vw - 48px));
+  background:#0b0b0b;
+  color:#fff;
+  border:1px solid rgba(211,176,91,.45);
+  border-radius:8px;
+  padding:12px 14px;
+  font-size:12px;
+  line-height:1.5;
+  box-shadow:0 18px 45px rgba(11,11,11,.22);
+  opacity:0;
+  visibility:hidden;
+  transform:translateY(-4px);
+  transition:opacity .16s ease, transform .16s ease, visibility .16s ease;
+}
+.graph-insight:hover .graph-insight-popover,
+.graph-insight:focus-within .graph-insight-popover {
+  opacity:1;
+  visibility:visible;
+  transform:translateY(0);
+}
+.graph-insight-title {
+  color:var(--gold);
+  font-family:var(--mono);
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  font-size:10px;
+  margin-bottom:4px;
+}
+.graph-insight-body { color:rgba(255,255,255,.78); }
 @media (max-width:900px) {
   .app { grid-template-columns:1fr; }
   .sidebar { position:relative; height:auto; }

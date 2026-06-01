@@ -1,4 +1,3 @@
-from django.db.models import Avg, Count
 from django.db.models import Avg
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -29,6 +28,14 @@ def task_debug_hint(notes):
         return "Import jobs or let the live pipeline fetch jobs before queueing analysis."
     if "missing adzuna credentials" in text:
         return "Add ADZUNA_APP_ID and ADZUNA_APP_KEY to your .env file, then restart the server."
+    if "adzuna api limit reached" in text or "http 429" in text:
+        return "The app will retry automatically. Increase the wait interval if this repeats."
+    if "adzuna authentication error" in text:
+        return "Check ADZUNA_APP_ID and ADZUNA_APP_KEY in .env, then restart the server."
+    if "adzuna request error" in text:
+        return "Check the keyword, location, and Adzuna country setting."
+    if "adzuna network error" in text or "adzuna server error" in text:
+        return "This is usually temporary. The jobs-only loop retries automatically."
     if "no text documents" in text:
         return "Add module and job descriptions with enough text for Word2Vec training."
     return "Open Background Tasks for the full task history and check the latest task notes."
@@ -52,7 +59,16 @@ class DashboardView(TemplateView):
         ctx["job_count"] = JobAdvert.objects.count()
         ctx["last_run"] = AnalysisRun.objects.first()
         ctx["pending_tasks"] = TaskRecord.objects.filter(status__in=["PENDING", "STARTED"]).count()
-        ctx["live_task"] = TaskRecord.objects.filter(run_name__startswith="Live Pipeline", status__in=["PENDING", "STARTED"]).first()
+        ctx["live_task"] = (
+            TaskRecord.objects
+            .filter(run_name__startswith="Jobs Only", status__in=["PENDING", "STARTED"])
+            .first()
+            or TaskRecord.objects
+            .filter(run_name__startswith="Live Pipeline", status__in=["PENDING", "STARTED"])
+            .first()
+        )
+        latest_jobs_only = TaskRecord.objects.filter(run_name__startswith="Jobs Only").order_by("-created_at").first()
+        ctx["should_autostart_jobs"] = not ctx["live_task"] and not (latest_jobs_only and latest_jobs_only.status == "STOPPED")
         ctx["avg_score"] = (GapResult.objects.aggregate(v=Avg("similarity_score"))["v"] or 0) * 100
         ctx["latest_results"] = GapResult.objects.select_related("course", "job").order_by("-run__created_at", "-similarity_score")[:8]
         return ctx
@@ -147,7 +163,7 @@ class StartContinuousJobsView(View):
                 "status_url": reverse("task-status-api", args=[live.id]),
             })
 
-        keyword = request.POST.get("keyword", "data analyst").strip() or "data analyst"
+        keyword = request.POST.get("keyword", "MBA").strip() or "MBA"
         location = request.POST.get("location", "south africa").strip() or "south africa"
         max_results = bounded_int(request.POST.get("max_results"), 50, 1, 50)
         interval = bounded_int(request.POST.get("interval_seconds"), 45, 10, 3600)
@@ -168,7 +184,7 @@ class StartJobsOnlyView(View):
                 "status_url": reverse("task-status-api", args=[live.id]),
             })
 
-        keyword = request.POST.get("keyword", "data analyst").strip() or "data analyst"
+        keyword = request.POST.get("keyword", "MBA").strip() or "MBA"
         location = request.POST.get("location", "south africa").strip() or "south africa"
         max_results = bounded_int(request.POST.get("max_results"), 50, 1, 50)
         interval = bounded_int(request.POST.get("interval_seconds"), 45, 5, 3600)
