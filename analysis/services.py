@@ -20,7 +20,7 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
             progress_callback(percent, message)
 
     def should_report(index: int, total: int) -> bool:
-        return total <= 10 or index == total or index % max(1, total // 20) == 0
+        return total <= 10 or index == total or index % max(1, total // 50) == 0
 
     report(2, "Creating analysis run...")
     run = AnalysisRun.objects.create(name=run_name, status="running")

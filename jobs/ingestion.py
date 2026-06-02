@@ -239,13 +239,13 @@ def fetch_adzuna_page(keyword: str, location: str = "south africa", page: int = 
     }
 
 
-def fetch_from_adzuna(keyword: str, location: str = "south africa", max_results: int = 800) -> int:
+def fetch_from_adzuna(keyword: str, location: str = "south africa", max_results: int = 800, progress_callback=None) -> int:
     saved = 0
     page = 1
     per_page = 50
 
     while True:
-        result = fetch_adzuna_page(keyword, location, page=page, per_page=per_page)
+        result = fetch_adzuna_page(keyword, location, page=page, per_page=per_page, progress_callback=progress_callback)
         if not result["seen"]:
             break
 

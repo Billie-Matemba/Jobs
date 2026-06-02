@@ -10,6 +10,12 @@
 {% if course.description %}
 <p class="text-muted mb-6" style="font-size:14px;">{{ course.description }}</p>
 {% endif %}
+{% if course.university_name or course.country %}
+<div class="chip-list mb-6">
+  {% if course.university_name %}<span class="chip">{{ course.university_name }}</span>{% endif %}
+  {% if course.country %}<span class="chip chip-match">{{ course.country }}</span>{% endif %}
+</div>
+{% endif %}
 
 <div class="grid-2" style="align-items:start;">
   <!-- Modules list -->
@@ -24,6 +30,12 @@
         <div class="flex" style="justify-content:space-between;align-items:flex-start;gap:12px;">
           <div style="flex:1;">
             <div style="font-weight:600;font-size:14px;">{{ mod.name }}</div>
+            {% if mod.university_name or mod.country %}
+            <div class="chip-list mt-2">
+              {% if mod.university_name %}<span class="chip">{{ mod.university_name }}</span>{% endif %}
+              {% if mod.country %}<span class="chip chip-match">{{ mod.country }}</span>{% endif %}
+            </div>
+            {% endif %}
             <div class="text-muted text-sm mt-2" style="white-space:pre-wrap;max-height:80px;overflow:hidden;">{{ mod.content|truncatechars:200 }}</div>
             {% if mod.skills_extracted %}
             <div class="chip-list mt-2">
@@ -58,7 +70,7 @@
   <div>
     <div class="section-hd"><h2>Add Module</h2></div>
     <div class="card">
-      <form method="post" action="{% url 'module-create' course.pk %}">
+      <form method="post" action="{% url 'module-create' course.pk %}" enctype="multipart/form-data">
         {% csrf_token %}
         {% for field in module_form %}
         <div class="form-group">

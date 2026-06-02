@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.db import IntegrityError
 from django.db.models import Avg
+from django.utils import timezone
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import JsonResponse
@@ -20,6 +23,22 @@ from analysis.tasks import (
     start_continuous_job_task,
     stop_task,
 )
+
+
+STALE_TASK_MINUTES = 10
+
+
+def mark_stale_tasks():
+    cutoff = timezone.now() - timedelta(minutes=STALE_TASK_MINUTES)
+    TaskRecord.objects.filter(
+        status__in=["PENDING", "STARTED"],
+        updated_at__lt=cutoff,
+    ).update(
+        status="FAILURE",
+        progress=0,
+        notes="Task stopped updating. The background worker likely stopped or the dev server was restarted. Start it again.",
+        finished_at=timezone.now(),
+    )
 
 
 def task_debug_hint(notes):
@@ -55,6 +74,7 @@ class DashboardView(TemplateView):
     template_name = "dashboard/home.html"
 
     def get_context_data(self, **kwargs):
+        mark_stale_tasks()
         ctx = super().get_context_data(**kwargs)
         ctx["course_count"] = Course.objects.count()
         ctx["module_count"] = sum(c.modules.count() for c in Course.objects.prefetch_related("modules"))
@@ -172,6 +192,7 @@ class RunAnalysisView(View):
 
 class StartContinuousJobsView(View):
     def post(self, request):
+        mark_stale_tasks()
         live = TaskRecord.objects.filter(run_name__startswith="Live Pipeline", status__in=["PENDING", "STARTED"]).first()
         if live:
             return JsonResponse({
@@ -193,6 +214,7 @@ class StartContinuousJobsView(View):
 
 class StartJobsOnlyView(View):
     def post(self, request):
+        mark_stale_tasks()
         live = TaskRecord.objects.filter(run_name__startswith="Jobs Only", status__in=["PENDING", "STARTED"]).first()
         if live:
             return JsonResponse({
@@ -262,6 +284,7 @@ class TaskListView(ListView):
 
 
 def task_status_api(request, pk):
+    mark_stale_tasks()
     r = get_object_or_404(TaskRecord, pk=pk)
     return JsonResponse({
         "id": r.id,
@@ -270,13 +293,18 @@ def task_status_api(request, pk):
         "progress": r.progress,
         "notes": r.notes,
         "debug_hint": task_debug_hint(r.notes) if r.status == "FAILURE" else "",
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         "finished_at": r.finished_at.isoformat() if r.finished_at else None,
     })
 
 
 def dashboard_metrics(request):
+    mark_stale_tasks()
     last_run = AnalysisRun.objects.first()
-    results = GapResult.objects.filter(run=last_run).select_related("course", "job") if last_run else GapResult.objects.none()
+    visual_run = last_run
+    if visual_run and not GapResult.objects.filter(run=visual_run).exists():
+        visual_run = AnalysisRun.objects.filter(results__isnull=False).distinct().order_by("-created_at").first()
+    results = GapResult.objects.filter(run=visual_run).select_related("course", "job") if visual_run else GapResult.objects.none()
     score_values = list(results.values_list("similarity_score", flat=True))
     buckets = [0, 0, 0, 0, 0]
     for score in score_values:
@@ -285,9 +313,9 @@ def dashboard_metrics(request):
 
     job_skills = []
     course_skills = []
-    if last_run:
-        job_skills = list(SkillMatrix.objects.filter(run=last_run, source="jobs").values("skill", "frequency")[:10])
-        course_skills = list(SkillMatrix.objects.filter(run=last_run, source="courses").values("skill", "frequency")[:10])
+    if visual_run:
+        job_skills = list(SkillMatrix.objects.filter(run=visual_run, source="jobs").values("skill", "frequency")[:10])
+        course_skills = list(SkillMatrix.objects.filter(run=visual_run, source="courses").values("skill", "frequency")[:10])
 
     recent_tasks = []
     for task in TaskRecord.objects.order_by("-created_at").values("id", "run_name", "status", "progress", "notes")[:8]:
@@ -305,6 +333,12 @@ def dashboard_metrics(request):
             "status": last_run.status,
             "name": last_run.name,
         } if last_run else None,
+        "visual_run": {
+            "id": visual_run.id,
+            "status": visual_run.status,
+            "name": visual_run.name,
+        } if visual_run else None,
+        "has_visual_data": bool(score_values or job_skills or course_skills),
         "average_score": round((sum(score_values) / len(score_values)) * 100, 1) if score_values else 0,
         "score_buckets": buckets,
         "score_labels": ["0-20", "20-40", "40-60", "60-80", "80-100"],
@@ -321,7 +355,10 @@ def similarity_network(request):
         nx = None
 
     last_run = AnalysisRun.objects.first()
-    qs = GapResult.objects.filter(run=last_run).select_related("course", "job").order_by("-similarity_score")[:40] if last_run else []
+    visual_run = last_run
+    if visual_run and not GapResult.objects.filter(run=visual_run).exists():
+        visual_run = AnalysisRun.objects.filter(results__isnull=False).distinct().order_by("-created_at").first()
+    qs = GapResult.objects.filter(run=visual_run).select_related("course", "job").order_by("-similarity_score")[:40] if visual_run else []
     if nx:
         graph = nx.Graph()
         for r in qs:
@@ -330,21 +367,35 @@ def similarity_network(request):
             graph.add_node(course_id, label=r.course.code or r.course.name, group="course", title=r.course.name)
             graph.add_node(job_id, label=r.job.title[:28], group="job", title=r.job.title)
             graph.add_edge(course_id, job_id, value=max(1, r.similarity_percent), title=f"Cosine similarity: {r.similarity_score:.4f}")
-        nodes = [{"id": n, **attrs} for n, attrs in graph.nodes(data=True)]
+        positions = nx.spring_layout(graph, seed=42, k=0.7) if graph.number_of_nodes() else {}
+        nodes = [
+            {
+                "id": n,
+                "x": round(positions.get(n, (0, 0))[0] * 520, 2),
+                "y": round(positions.get(n, (0, 0))[1] * 360, 2),
+                **attrs,
+            }
+            for n, attrs in graph.nodes(data=True)
+        ]
         edges = [{"from": u, "to": v, **attrs} for u, v, attrs in graph.edges(data=True)]
     else:
         nodes, edges, seen = [], [], set()
-        for r in qs:
+        for index, r in enumerate(qs):
             course_id = f"course-{r.course_id}"
             job_id = f"job-{r.job_id}"
             if course_id not in seen:
-                nodes.append({"id": course_id, "label": r.course.code or r.course.name, "group": "course", "title": r.course.name})
+                nodes.append({"id": course_id, "label": r.course.code or r.course.name, "group": "course", "title": r.course.name, "x": -260, "y": index * 52})
                 seen.add(course_id)
             if job_id not in seen:
-                nodes.append({"id": job_id, "label": r.job.title[:28], "group": "job", "title": r.job.title})
+                nodes.append({"id": job_id, "label": r.job.title[:28], "group": "job", "title": r.job.title, "x": 260, "y": index * 52})
                 seen.add(job_id)
             edges.append({"from": course_id, "to": job_id, "value": max(1, r.similarity_percent), "title": f"Cosine similarity: {r.similarity_score:.4f}"})
-    return JsonResponse({"nodes": nodes, "edges": edges})
+    return JsonResponse({
+        "run_id": visual_run.id if visual_run else None,
+        "has_visual_data": bool(nodes and edges),
+        "nodes": nodes,
+        "edges": edges,
+    })
 
 
 def results_json(request):

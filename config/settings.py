@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "analysis",
     "dashboard",
     "course_scraper",
+    "methodology",
 ]
 
 MIDDLEWARE = [

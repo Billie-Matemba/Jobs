@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+{% block title %}Methodology - CurriculumMatch{% endblock %}
+{% block page_title %}Methodology{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'analysis-results' %}" class="btn btn-outline">View Results</a>
+  <a href="{% url 'home' %}" class="btn btn-primary">Dashboard</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.method-shell { display:grid; gap:24px; }
+.method-hero {
+  display:grid;
+  grid-template-columns:minmax(320px, 1.1fr) minmax(320px, .9fr);
+  gap:24px;
+  align-items:stretch;
+}
+.method-hero-copy {
+  background:#0b0b0b;
+  color:#fff;
+  border:1px solid rgba(245,130,32,.44);
+  border-radius:8px;
+  padding:30px;
+}
+.method-kicker {
+  font-family:var(--mono);
+  color:var(--gold);
+  text-transform:uppercase;
+  letter-spacing:.14em;
+  font-size:10px;
+  margin-bottom:12px;
+}
+.method-title {
+  font-family:var(--display);
+  font-size:34px;
+  line-height:1.05;
+  max-width:760px;
+}
+.method-copy { color:rgba(255,255,255,.72); max-width:760px; margin-top:14px; }
+.pipeline-card {
+  display:grid;
+  gap:12px;
+  align-content:center;
+}
+.pipeline-step {
+  display:grid;
+  grid-template-columns:42px 1fr;
+  gap:12px;
+  align-items:start;
+  padding:14px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fff;
+}
+.step-num {
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#0b0b0b;
+  color:var(--gold);
+  font-family:var(--mono);
+  font-size:12px;
+}
+.pipeline-step strong { display:block; font-size:13px; }
+.pipeline-step span { display:block; color:var(--muted); font-size:12px; margin-top:3px; }
+.method-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:18px; }
+.method-two { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+.formula {
+  padding:16px;
+  border-radius:8px;
+  border:1px solid var(--rule);
+  background:#fbfaf6;
+  font-family:var(--mono);
+  font-size:12px;
+  line-height:1.7;
+  overflow:auto;
+}
+.formula b { color:var(--gold-dark); }
+.mini-heading {
+  font-family:var(--display);
+  font-size:18px;
+  margin-bottom:10px;
+}
+.method-text { color:var(--muted); font-size:13px; }
+.calc-list { display:grid; gap:12px; margin-top:14px; }
+.calc-row {
+  display:grid;
+  grid-template-columns:160px 1fr;
+  gap:14px;
+  align-items:start;
+  padding:12px 0;
+  border-top:1px solid var(--rule);
+}
+.calc-row:first-child { border-top:0; }
+.calc-row b { font-size:13px; }
+.calc-row span { color:var(--muted); font-size:12px; }
+.viz-strip { display:grid; gap:10px; margin-top:16px; }
+.viz-row {
+  display:grid;
+  grid-template-columns:130px 1fr 44px;
+  gap:12px;
+  align-items:center;
+}
+.viz-label { font-size:12px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.viz-track {
+  height:9px;
+  border-radius:999px;
+  background:var(--soft);
+  overflow:hidden;
+}
+.viz-fill {
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg, #0b0b0b, var(--gold));
+}
+.network-demo {
+  min-height:260px;
+  position:relative;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:
+    linear-gradient(90deg, rgba(11,11,11,.04) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(11,11,11,.04) 1px, transparent 1px),
+    #fff;
+  background-size:38px 38px;
+  overflow:hidden;
+}
+.node {
+  position:absolute;
+  width:76px;
+  height:34px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  font-size:11px;
+  font-weight:700;
+  z-index:2;
+}
+.node-course { background:#0b0b0b; color:#fff; border:2px solid var(--gold); }
+.node-job { background:var(--gold); color:#0b0b0b; border:2px solid #0b0b0b; }
+.edge {
+  position:absolute;
+  height:2px;
+  background:#c8b06b;
+  transform-origin:left center;
+  z-index:1;
+}
+.edge.strong { height:4px; background:#0b0b0b; }
+.edge.medium { height:3px; background:#b95400; }
+.method-table { width:100%; font-size:13px; }
+.method-table td:first-child { font-weight:700; width:160px; }
+.badge-line { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+@media (max-width:1100px) {
+  .method-hero, .method-grid, .method-two { grid-template-columns:1fr; }
+}
+@media (max-width:700px) {
+  .method-title { font-size:28px; }
+  .calc-row, .viz-row { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="method-shell">
+  <section class="method-hero">
+    <div class="method-hero-copy">
+      <div class="method-kicker">CurriculumMatch methodology</div>
+      <h1 class="method-title">A normalized embedding workflow for comparing curriculum content with live labour-market demand.</h1>
+      <p class="method-copy">
+        The system converts module syllabi and job adverts into comparable semantic vectors, extracts explicit skill evidence, and blends both signals into interpretable course-to-job alignment scores.
+      </p>
+      <div class="badge-line">
+        <span class="badge badge-gold">Normalized embeddings</span>
+        <span class="badge badge-gray">Cosine similarity</span>
+        <span class="badge badge-gray">Skill coverage</span>
+        <span class="badge badge-gray">Network visualisation</span>
+      </div>
+    </div>
+    <div class="card pipeline-card">
+      <div class="pipeline-step">
+        <div class="step-num">01</div>
+        <div><strong>Collect evidence</strong><span>Courses, module text, uploaded documents, scraped programme pages, CSV jobs, manual jobs, and Adzuna jobs.</span></div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">02</div>
+        <div><strong>Clean and structure text</strong><span>Descriptions are normalized, document text is parsed, duplicates are filtered, and job sections are extracted.</span></div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">03</div>
+        <div><strong>Embed and extract skills</strong><span>Documents become semantic vectors; spaCy phrase matching and aliases extract explicit skill terms.</span></div>
+      </div>
+      <div class="pipeline-step">
+        <div class="step-num">04</div>
+        <div><strong>Score and visualise</strong><span>Cosine scores, skill gaps, score distributions, and static network layouts make alignment inspectable.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="method-grid">
+    <div class="card">
+      <div class="card-label">Input layer</div>
+      <h2 class="mini-heading">Curriculum evidence</h2>
+      <p class="method-text">Each course contains modules. Module content can be pasted directly or parsed from PDF, Word, text, and PowerPoint files. The course scraper can also import programme/module evidence from relevant pages.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Market layer</div>
+      <h2 class="mini-heading">Job-market evidence</h2>
+      <p class="method-text">Jobs enter through CSV upload, manual entry, or Adzuna. Adzuna duplicates are managed with external IDs and content fingerprints so repeated listings do not distort market demand.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Processing layer</div>
+      <h2 class="mini-heading">Analysis runs</h2>
+      <p class="method-text">A run snapshots current courses and jobs, vectorises content, extracts skills, stores match rows, and records task progress so visualisations can preserve the last usable result while new work is running.</p>
+    </div>
+  </section>
+
+  <section class="method-two">
+    <div class="card">
+      <div class="section-hd"><h2>Normalized Embeddings</h2><span class="badge badge-gold">Semantic signal</span></div>
+      <p class="method-text">
+        The preferred backend is a sentence-transformer model. It encodes text with normalized embeddings, meaning each vector is scaled to unit length before comparison. When that model is unavailable, the system falls back to Word2Vec by averaging token vectors from the current corpus.
+      </p>
+      <div class="calc-list">
+        <div class="calc-row">
+          <b>Sentence-transformer</b>
+          <span><code>encode(text, normalize_embeddings=True)</code> creates a unit-length vector for each module and job advert.</span>
+        </div>
+        <div class="calc-row">
+          <b>Word2Vec fallback</b>
+          <span>Text is lowercased, tokenised, trained with a seeded Word2Vec model, then represented as the mean of known token vectors.</span>
+        </div>
+        <div class="calc-row">
+          <b>Why normalize?</b>
+          <span>Normalization makes the comparison focus on direction, or meaning, rather than document length or vector magnitude.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-hd"><h2>Core Calculations</h2><span class="badge badge-gray">0 to 1 scale</span></div>
+      <div class="formula">
+        <div><b>Cosine similarity</b></div>
+        <div>cos(A, B) = (A . B) / (||A|| * ||B||)</div>
+        <br>
+        <div><b>Course semantic score</b></div>
+        <div>semantic = mean(top_k(module_job_cosines))</div>
+        <br>
+        <div><b>Skill coverage</b></div>
+        <div>skill = matched_job_skills / unique_job_skills</div>
+        <br>
+        <div><b>Final score</b></div>
+        <div>final = ((0.75 * semantic) + (0.25 * skill)) / (0.75 + 0.25)</div>
+      </div>
+      <p class="method-text mt-4">Scores are clamped between 0 and 1, then displayed as percentages for interpretation.</p>
+    </div>
+  </section>
+
+  <section class="method-two">
+    <div class="card">
+      <div class="section-hd"><h2>Visual Interpretation</h2><span class="badge badge-gold">Score distribution</span></div>
+      <p class="method-text">The score distribution groups all course-to-job scores into bands. High concentration in the right-hand bands suggests stronger curriculum-to-market alignment.</p>
+      <div class="viz-strip" aria-label="Example score distribution">
+        <div class="viz-row"><div class="viz-label">0-20</div><div class="viz-track"><div class="viz-fill" style="width:18%;"></div></div><div class="text-mono text-sm">18</div></div>
+        <div class="viz-row"><div class="viz-label">20-40</div><div class="viz-track"><div class="viz-fill" style="width:32%;"></div></div><div class="text-mono text-sm">32</div></div>
+        <div class="viz-row"><div class="viz-label">40-60</div><div class="viz-track"><div class="viz-fill" style="width:64%;"></div></div><div class="text-mono text-sm">64</div></div>
+        <div class="viz-row"><div class="viz-label">60-80</div><div class="viz-track"><div class="viz-fill" style="width:78%;"></div></div><div class="text-mono text-sm">78</div></div>
+        <div class="viz-row"><div class="viz-label">80-100</div><div class="viz-track"><div class="viz-fill" style="width:42%;"></div></div><div class="text-mono text-sm">42</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-hd"><h2>Network Reading</h2><span class="badge badge-gray">Static layout</span></div>
+      <p class="method-text">The network is built from course nodes, job nodes, and weighted similarity edges. A fixed seeded layout is used so nodes do not move while analysts inspect the graph.</p>
+      <div class="network-demo" aria-label="Example static similarity network">
+        <div class="edge strong" style="left:140px;top:78px;width:230px;transform:rotate(12deg);"></div>
+        <div class="edge medium" style="left:140px;top:154px;width:220px;transform:rotate(-15deg);"></div>
+        <div class="edge" style="left:140px;top:210px;width:260px;transform:rotate(-1deg);"></div>
+        <div class="node node-course" style="left:46px;top:58px;">MBA</div>
+        <div class="node node-course" style="left:52px;top:144px;">DATA</div>
+        <div class="node node-course" style="left:48px;top:202px;">OPS</div>
+        <div class="node node-job" style="right:52px;top:82px;">Manager</div>
+        <div class="node node-job" style="right:44px;top:176px;">Analyst</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-hd"><h2>How To Read the Outputs</h2><span class="badge badge-gold">Analyst guide</span></div>
+    <div class="table-wrap">
+      <table class="method-table">
+        <tbody>
+          <tr>
+            <td>High score</td>
+            <td>The module language and extracted skills are close to the selected job advert. Inspect matched skills to confirm the alignment is educationally meaningful.</td>
+          </tr>
+          <tr>
+            <td>Low score</td>
+            <td>The course may lack relevant market language, the job may be outside the curriculum scope, or the text may be too thin for reliable embeddings.</td>
+          </tr>
+          <tr>
+            <td>Missing skills</td>
+            <td>Skills found in job adverts but not in the course modules. These are candidate curriculum gaps, not automatic curriculum changes.</td>
+          </tr>
+          <tr>
+            <td>Extra skills</td>
+            <td>Skills taught by modules but not demanded in a particular job. These can still be valuable, especially for broader graduate outcomes.</td>
+          </tr>
+          <tr>
+            <td>Network edge width</td>
+            <td>Thicker edges represent stronger similarity percentages. The layout is static so repeated refreshes do not disrupt interpretation.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="method-grid">
+    <div class="card">
+      <div class="card-label">Duplicate control</div>
+      <h2 class="mini-heading">Adzuna deduplication</h2>
+      <p class="method-text">The app checks Adzuna external IDs and a normalized content fingerprint built from title, company, recruiter, location, reference, and description. Duplicate jobs are skipped and counted in task notes.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Reliability control</div>
+      <h2 class="mini-heading">Live task heartbeat</h2>
+      <p class="method-text">Background tasks update a heartbeat timestamp. If a dev server restart kills a thread, stale tasks are marked clearly instead of appearing to process forever.</p>
+    </div>
+    <div class="card">
+      <div class="card-label">Visual control</div>
+      <h2 class="mini-heading">Preserved visuals</h2>
+      <p class="method-text">Dashboard visuals only update when new visual data exists. During processing, the last usable results remain visible so analysis does not disappear mid-run.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}

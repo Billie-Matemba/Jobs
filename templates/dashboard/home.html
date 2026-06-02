@@ -34,7 +34,7 @@
   position:absolute;
   inset:auto -12% -34% 42%;
   height:190px;
-  background:radial-gradient(circle, rgba(211,176,91,.22), transparent 68%);
+  background:radial-gradient(circle, rgba(245,130,32,.24), transparent 68%);
   pointer-events:none;
 }
 .hero-kicker { font-family:var(--mono); color:var(--gold); text-transform:uppercase; letter-spacing:.16em; font-size:11px; margin-bottom:14px; }
@@ -52,7 +52,7 @@
   padding:22px;
   min-height:132px;
 }
-.metric-card.featured { background:#0b0b0b; color:#fff; border-color:rgba(211,176,91,.42); }
+.metric-card.featured { background:#0b0b0b; color:#fff; border-color:rgba(245,130,32,.46); }
 .metric-label { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
 .metric-card.featured .metric-label { color:var(--gold); }
 .metric-value { font-family:var(--display); font-weight:800; font-size:40px; line-height:1; margin-top:14px; }
@@ -78,7 +78,7 @@
   height:8px;
   border-radius:50%;
   background:var(--gold);
-  box-shadow:0 0 0 0 rgba(211,176,91,.55);
+  box-shadow:0 0 0 0 rgba(245,130,32,.58);
   animation:fetchPulse 1.3s ease-out infinite;
 }
 .fetch-strip {
@@ -97,8 +97,8 @@
   animation:fetchSweep 1.15s ease-in-out infinite;
 }
 @keyframes fetchPulse {
-  70% { box-shadow:0 0 0 9px rgba(211,176,91,0); }
-  100% { box-shadow:0 0 0 0 rgba(211,176,91,0); }
+  70% { box-shadow:0 0 0 9px rgba(245,130,32,0); }
+  100% { box-shadow:0 0 0 0 rgba(245,130,32,0); }
 }
 @keyframes fetchSweep {
   from { transform:translateX(-110%); }
@@ -260,6 +260,12 @@ let liveStatusUrl = "{% if live_task %}{% url 'task-status-api' live_task.id %}{
 let autoStartJobsOnly = {% if should_autostart_jobs %}true{% else %}false{% endif %};
 const toastedTasks = new Set();
 let metricsLoaded = false;
+let lastScoreSignature = '';
+let lastSkillsSignature = '';
+let networkInstance = null;
+let networkNodes = null;
+let networkEdges = null;
+let lastNetworkSignature = '';
 
 function csrfToken() {
   return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
@@ -320,9 +326,13 @@ function explainNetwork(graph) {
   return `Mixed network: ${nodeCount} nodes and ${edgeCount} similarity links. The strongest edges show which course-job pairs deserve review first.`;
 }
 
+function signature(value) {
+  return JSON.stringify(value || null);
+}
+
 const scoreChart = new Chart(document.getElementById('scoreChart'), {
   type: 'bar',
-  data: { labels: ['0-20','20-40','40-60','60-80','80-100'], datasets: [{ label: 'Matches', data: [0,0,0,0,0], backgroundColor: '#d3b05b', borderColor: '#0b0b0b', borderWidth: 1 }] },
+  data: { labels: ['0-20','20-40','40-60','60-80','80-100'], datasets: [{ label: 'Matches', data: [0,0,0,0,0], backgroundColor: '#f58220', borderColor: '#0b0b0b', borderWidth: 1 }] },
   options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } } }
 });
 
@@ -330,7 +340,7 @@ const skillsChart = new Chart(document.getElementById('skillsChart'), {
   type: 'line',
   data: { labels: [], datasets: [
     { label: 'Jobs', data: [], borderColor:'#0b0b0b', backgroundColor:'rgba(11,11,11,.08)', tension:.35, fill:true },
-    { label: 'Courses', data: [], borderColor:'#d3b05b', backgroundColor:'rgba(211,176,91,.18)', tension:.35, fill:true }
+    { label: 'Courses', data: [], borderColor:'#f58220', backgroundColor:'rgba(245,130,32,.18)', tension:.35, fill:true }
   ] },
   options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ boxWidth:10 } } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } } }
 });
@@ -340,20 +350,30 @@ async function refreshMetrics() {
   const data = await response.json();
   document.getElementById('jobCount').textContent = data.counts.jobs;
   document.getElementById('courseCount').textContent = data.counts.courses;
-  document.getElementById('avgScore').textContent = `${data.average_score}%`;
-  scoreChart.data.labels = data.score_labels;
-  scoreChart.data.datasets[0].data = data.score_buckets;
-  scoreChart.update();
-  setInsight('scoreInsight', explainScoreDistribution(data.score_buckets, data.average_score));
+  if (data.has_visual_data) {
+    document.getElementById('avgScore').textContent = `${data.average_score}%`;
+    const scoreSignature = signature([data.visual_run?.id, data.score_labels, data.score_buckets, data.average_score]);
+    if (scoreSignature !== lastScoreSignature) {
+      lastScoreSignature = scoreSignature;
+      scoreChart.data.labels = data.score_labels;
+      scoreChart.data.datasets[0].data = data.score_buckets;
+      scoreChart.update();
+      setInsight('scoreInsight', explainScoreDistribution(data.score_buckets, data.average_score));
+    }
+  }
 
   const labels = [...new Set([...data.job_skills.map(s => s.skill), ...data.course_skills.map(s => s.skill)])].slice(0, 10);
   const jobValues = labels.map(label => data.job_skills.find(s => s.skill === label)?.frequency || 0);
   const courseValues = labels.map(label => data.course_skills.find(s => s.skill === label)?.frequency || 0);
-  skillsChart.data.labels = labels;
-  skillsChart.data.datasets[0].data = jobValues;
-  skillsChart.data.datasets[1].data = courseValues;
-  skillsChart.update();
-  setInsight('skillsInsight', explainSkills(labels, jobValues, courseValues));
+  const skillsSignature = signature([data.visual_run?.id, labels, jobValues, courseValues]);
+  if (data.has_visual_data && labels.length && skillsSignature !== lastSkillsSignature) {
+    lastSkillsSignature = skillsSignature;
+    skillsChart.data.labels = labels;
+    skillsChart.data.datasets[0].data = jobValues;
+    skillsChart.data.datasets[1].data = courseValues;
+    skillsChart.update();
+    setInsight('skillsInsight', explainSkills(labels, jobValues, courseValues));
+  }
 
   document.getElementById('activityList').innerHTML = data.recent_tasks.map(task => `
     <div class="activity-row ${task.status === 'STARTED' || task.status === 'PENDING' ? 'is-running' : ''}">
@@ -390,17 +410,37 @@ async function refreshMetrics() {
 async function refreshNetwork() {
   const response = await fetch(networkUrl, { headers: { 'Accept':'application/json' } });
   const graph = await response.json();
+  if (!graph.has_visual_data && networkInstance) return;
   setInsight('networkInsight', explainNetwork(graph));
+  const networkSignature = signature([
+    graph.run_id,
+    graph.nodes.map(node => [node.id, node.label, node.group, node.x, node.y]),
+    graph.edges.map(edge => [edge.from, edge.to, edge.value]),
+  ]);
+  if (networkSignature === lastNetworkSignature) return;
+  lastNetworkSignature = networkSignature;
   const container = document.getElementById('similarityNetwork');
-  const data = { nodes: new vis.DataSet(graph.nodes), edges: new vis.DataSet(graph.edges) };
+  if (!networkNodes) networkNodes = new vis.DataSet();
+  if (!networkEdges) networkEdges = new vis.DataSet();
+  networkNodes.clear();
+  networkEdges.clear();
+  networkNodes.add(graph.nodes);
+  networkEdges.add(graph.edges);
+  const data = { nodes: networkNodes, edges: networkEdges };
   const options = {
     nodes: { shape:'dot', size:18, borderWidth:1, font:{ face:'Inter, Arial', size:12, color:'#0b0b0b' } },
-    edges: { color:{ color:'#c8b06b', highlight:'#0b0b0b' }, smooth:true, scaling:{ min:1, max:6 } },
-    groups: { course:{ color:{ background:'#0b0b0b', border:'#d3b05b' }, font:{ color:'#0b0b0b' } }, job:{ color:{ background:'#d3b05b', border:'#0b0b0b' } } },
-    physics: { stabilization:true, barnesHut:{ gravitationalConstant:-4200, springLength:130 } },
-    interaction: { hover:true, tooltipDelay:80 }
+    edges: { color:{ color:'#f0a15e', highlight:'#0b0b0b' }, smooth:false, scaling:{ min:1, max:6 } },
+    groups: { course:{ color:{ background:'#0b0b0b', border:'#f58220' }, font:{ color:'#0b0b0b' } }, job:{ color:{ background:'#f58220', border:'#0b0b0b' } } },
+    layout: { improvedLayout:false },
+    physics: false,
+    interaction: { hover:true, tooltipDelay:80, dragNodes:true, navigationButtons:true, keyboard:true }
   };
-  new vis.Network(container, data, options);
+  if (!networkInstance) {
+    networkInstance = new vis.Network(container, data, options);
+  } else {
+    networkInstance.setOptions(options);
+    networkInstance.setData(data);
+  }
 }
 
 async function pollLiveTask() {

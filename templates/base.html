@@ -395,68 +395,76 @@ select.form-control { cursor: pointer; }
 
 /* ---- Professional dashboard theme ---- */
 :root {
-  --ink: #0b0b0b;
-  --paper: #f7f5ef;
+  --ink: #101010;
+  --paper: #f8f6f2;
   --surface: #ffffff;
-  --rule: #e5dece;
-  --soft: #f1ede3;
-  --gold: #d3b05b;
-  --gold-dark: #9c7625;
-  --olive: #171717;
-  --lime: #f4dc8a;
-  --rust: #a33a2d;
-  --blue: #2f5f8f;
-  --muted: #6f6a60;
+  --rule: #e6ded3;
+  --soft: #f2eee8;
+  --uj-orange: #f58220;
+  --uj-orange-dark: #b95400;
+  --uj-orange-soft: #fff1e4;
+  --gold: var(--uj-orange);
+  --gold-dark: var(--uj-orange-dark);
+  --olive: #1c1c1c;
+  --lime: #fff0df;
+  --rust: #9e2f18;
+  --blue: #29384a;
+  --muted: #706960;
   --display: 'Syne', sans-serif;
 }
 body {
   background:
-    linear-gradient(180deg, rgba(211,176,91,.08), transparent 280px),
+    linear-gradient(180deg, rgba(245,130,32,.12), transparent 300px),
     var(--paper);
   letter-spacing: 0;
 }
 .sidebar {
-  background:#090909;
-  border-right:1px solid rgba(211,176,91,.25);
+  background:#101010;
+  border-right:1px solid rgba(245,130,32,.34);
 }
-.brand-name { color:var(--gold); letter-spacing:0; }
+.sidebar-brand {
+  background:linear-gradient(180deg, rgba(245,130,32,.16), rgba(16,16,16,0));
+}
+.brand-name { color:var(--uj-orange); letter-spacing:0; }
+.brand-sub { color:rgba(255,255,255,.46); }
 .nav-item { border:1px solid transparent; }
-.nav-item:hover { background:rgba(211,176,91,.08); color:#fff; border-color:rgba(211,176,91,.18); }
-.nav-item.active { background:var(--gold); color:#0b0b0b; }
-.nav-item.active .nav-dot { background:#0b0b0b; }
+.nav-item:hover { background:rgba(245,130,32,.11); color:#fff; border-color:rgba(245,130,32,.26); }
+.nav-item.active { background:var(--uj-orange); color:#111; }
+.nav-item.active .nav-dot { background:#111; }
 .sidebar-footer { color:rgba(255,255,255,.32); }
 .topbar {
   background:rgba(255,255,255,.92);
   backdrop-filter: blur(16px);
+  border-bottom:1px solid rgba(245,130,32,.22);
 }
 .page-title { font-family:var(--display); letter-spacing:0; }
 .content { max-width:1540px; width:100%; }
 .btn, .card, .form-control, .table-wrap, .upload-zone, .alert { border-radius:8px; }
-.btn-primary { background:#0b0b0b; color:#fff; border:1px solid #0b0b0b; }
-.btn-primary:hover { background:#262017; border-color:var(--gold-dark); color:#fff; transform:translateY(-1px); }
-.btn-gold { background:var(--gold); color:#0b0b0b; border:1px solid var(--gold); }
-.btn-gold:hover { background:#e2c578; transform:translateY(-1px); }
+.btn-primary { background:#111; color:#fff; border:1px solid #111; }
+.btn-primary:hover { background:#2a2119; border-color:var(--uj-orange-dark); color:#fff; transform:translateY(-1px); }
+.btn-gold { background:var(--uj-orange); color:#111; border:1px solid var(--uj-orange); }
+.btn-gold:hover { background:#ff9a3d; transform:translateY(-1px); }
 .btn-outline { background:#fff; border:1px solid var(--rule); color:#0b0b0b; }
 .btn-outline:hover { border-color:var(--gold-dark); box-shadow:0 8px 22px rgba(11,11,11,.06); }
 .btn-outline-on-dark { background:rgba(255,255,255,.08); color:#fff; border:1px solid rgba(255,255,255,.24); }
-.btn-outline-on-dark:hover { border-color:var(--gold); background:rgba(211,176,91,.14); }
+.btn-outline-on-dark:hover { border-color:var(--uj-orange); background:rgba(245,130,32,.18); }
 .btn:disabled { opacity:.55; cursor:not-allowed; transform:none; }
 .card {
   border:1px solid var(--rule);
   box-shadow:0 18px 45px rgba(11,11,11,.045);
 }
-.card-label, th, .metric-label { color:#7a6a43; letter-spacing:.12em; }
+.card-label, th, .metric-label { color:#9a4a08; letter-spacing:.12em; }
 .badge { border-radius:999px; }
-.badge-gold { background:#f5e7bd; color:#0b0b0b; border:1px solid #dcc06f; }
+.badge-gold { background:var(--uj-orange-soft); color:#111; border:1px solid #ffbd80; }
 .badge-green { background:#e8f5e9; color:#236b35; }
 .badge-blue { background:#e7eef8; color:#244f7e; }
-.badge-rust { background:#fae8e5; color:#8f2f24; }
+.badge-rust { background:#fff0eb; color:#8f2f24; }
 .badge-gray { background:#f1ede3; color:#6f6a60; }
 .badge-olive { background:#0b0b0b; color:#fff; }
-.bar-fill, .task-progress-fill, .progress-fill { background:linear-gradient(90deg, #0b0b0b, var(--gold)); }
-.chip-match { background:#f5e7bd; color:#0b0b0b; border-color:#dcc06f; }
+.bar-fill, .task-progress-fill, .progress-fill { background:linear-gradient(90deg, #111, var(--uj-orange)); }
+.chip-match { background:var(--uj-orange-soft); color:#111; border-color:#ffbd80; }
 .chip-miss { background:#fae8e5; color:#8f2f24; border-color:#efc1bb; }
-.upload-zone:hover, .upload-zone.drag { border-color:var(--gold-dark); background:#fffaf0; }
+.upload-zone:hover, .upload-zone.drag { border-color:var(--uj-orange-dark); background:var(--uj-orange-soft); }
 .toast-stack {
   position:fixed;
   right:22px;
@@ -470,7 +478,7 @@ body {
 .toast {
   background:#fff;
   border:1px solid var(--rule);
-  border-left:4px solid var(--gold);
+  border-left:4px solid var(--uj-orange);
   border-radius:8px;
   box-shadow:0 18px 50px rgba(11,11,11,.16);
   padding:14px 44px 14px 16px;
@@ -517,8 +525,8 @@ body {
   width:30px;
   height:30px;
   border-radius:999px;
-  border:1px solid #dcc06f;
-  background:#fff8df;
+  border:1px solid #ffbd80;
+  background:var(--uj-orange-soft);
   color:#0b0b0b;
   cursor:help;
   display:inline-flex;
@@ -543,7 +551,7 @@ body {
   width:min(340px, calc(100vw - 48px));
   background:#0b0b0b;
   color:#fff;
-  border:1px solid rgba(211,176,91,.45);
+  border:1px solid rgba(245,130,32,.55);
   border-radius:8px;
   padding:12px 14px;
   font-size:12px;
@@ -561,7 +569,7 @@ body {
   transform:translateY(0);
 }
 .graph-insight-title {
-  color:var(--gold);
+  color:var(--uj-orange);
   font-family:var(--mono);
   text-transform:uppercase;
   letter-spacing:.1em;
@@ -618,6 +626,9 @@ body {
         <div class="nav-head">Analysis</div>
         <a href="{% url 'analysis-results' %}" class="nav-item {% if 'analysis' in request.resolver_match.url_name %}active{% endif %}">
           <span class="nav-dot"></span> Gap Results
+        </a>
+        <a href="{% url 'methodology' %}" class="nav-item {% if request.resolver_match.url_name == 'methodology' %}active{% endif %}">
+          <span class="nav-dot"></span> Methodology
         </a>
         <a href="{% url 'task-list' %}" class="nav-item {% if request.resolver_match.url_name == 'task-list' %}active{% endif %}">
           <span class="nav-dot"></span> Background Tasks

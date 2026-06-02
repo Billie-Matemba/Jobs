@@ -1,10 +1,12 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.views import View
 from django.views.generic import ListView
 
 from .models import Course, Module
 from .forms import CourseForm, ModuleForm
+from .file_parsing import parse_uploaded_files
 
 
 class CourseListView(ListView):
@@ -13,7 +15,34 @@ class CourseListView(ListView):
     context_object_name = "courses"
 
     def get_queryset(self):
-        return Course.objects.prefetch_related("modules").all()
+        queryset = Course.objects.prefetch_related("modules").all()
+        university = self.request.GET.get("university", "").strip()
+        country = self.request.GET.get("country", "").strip()
+        if university:
+            queryset = queryset.filter(university_name=university)
+        if country:
+            queryset = queryset.filter(country=country)
+        return queryset.distinct()
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["selected_university"] = self.request.GET.get("university", "").strip()
+        ctx["selected_country"] = self.request.GET.get("country", "").strip()
+        ctx["universities"] = (
+            Course.objects
+            .exclude(university_name="")
+            .order_by("university_name")
+            .values_list("university_name", flat=True)
+            .distinct()
+        )
+        ctx["countries"] = (
+            Course.objects
+            .exclude(country="")
+            .order_by("country")
+            .values_list("country", flat=True)
+            .distinct()
+        )
+        return ctx
 
 
 class CourseCreateView(View):
@@ -42,7 +71,7 @@ class CourseDetailView(View):
         return render(request, "courses/detail.html", {
             "course": course,
             "modules": modules,
-            "module_form": ModuleForm(),
+            "module_form": ModuleForm(course=course),
         })
 
 
@@ -82,12 +111,27 @@ class CourseDeleteView(View):
 class ModuleCreateView(View):
     def post(self, request, course_pk):
         course = get_object_or_404(Course, pk=course_pk)
-        form = ModuleForm(request.POST)
+        form = ModuleForm(request.POST, request.FILES)
         if form.is_valid():
-            module = form.save(commit=False)
-            module.course = course
-            module.save()
-            messages.success(request, f"Module '{module.name}' added.")
+            try:
+                module = form.save(commit=False)
+                module.course = course
+                module.university_name = module.university_name or course.university_name
+                module.country = module.country or course.country
+                module.content = merge_module_content(
+                    form.cleaned_data.get("content"),
+                    parse_uploaded_files(form.cleaned_data.get("content_files") or []),
+                )
+                module.save()
+                messages.success(request, f"Module '{module.name}' added.")
+            except ValidationError as exc:
+                form.add_error("content_files", exc)
+                messages.error(request, "Please fix the errors below.")
+                return render(request, "courses/detail.html", {
+                    "course": course,
+                    "modules": course.modules.all(),
+                    "module_form": form,
+                })
         else:
             messages.error(request, "Please fix the errors below.")
         return redirect("course-detail", pk=course_pk)
@@ -103,11 +147,20 @@ class ModuleEditView(View):
 
     def post(self, request, pk):
         module = get_object_or_404(Module, pk=pk)
-        form = ModuleForm(request.POST, instance=module)
+        form = ModuleForm(request.POST, request.FILES, instance=module)
         if form.is_valid():
-            form.save()
-            messages.success(request, "Module updated.")
-            return redirect("course-detail", pk=module.course.pk)
+            try:
+                module = form.save(commit=False)
+                module.content = merge_module_content(
+                    form.cleaned_data.get("content"),
+                    parse_uploaded_files(form.cleaned_data.get("content_files") or []),
+                )
+                module.save()
+                messages.success(request, "Module updated.")
+                return redirect("course-detail", pk=module.course.pk)
+            except ValidationError as exc:
+                form.add_error("content_files", exc)
+                messages.error(request, "Please fix the errors below.")
         return render(request, "courses/module_form.html", {
             "form": form, "module": module,
         })
@@ -120,3 +173,11 @@ class ModuleDeleteView(View):
         module.delete()
         messages.success(request, "Module deleted.")
         return redirect("course-detail", pk=course_pk)
+
+
+def merge_module_content(pasted_content, parsed_file_content):
+    parts = [
+        (pasted_content or "").strip(),
+        (parsed_file_content or "").strip(),
+    ]
+    return "\n\n".join(part for part in parts if part)

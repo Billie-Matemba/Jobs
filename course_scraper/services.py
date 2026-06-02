@@ -407,12 +407,23 @@ def import_candidate(run, candidate):
         code=code,
         defaults={
             "name": candidate["course_name"],
+            "university_name": candidate["school_name"],
+            "country": "South Africa",
             "description": f"Imported from {candidate['school_name']} ({candidate['source_url']})",
         },
     )
+    changed_fields = []
+    if not course.university_name:
+        course.university_name = candidate["school_name"]
+        changed_fields.append("university_name")
+    if not course.country:
+        course.country = "South Africa"
+        changed_fields.append("country")
     if not created and candidate["source_url"] not in course.description:
         course.description = f"{course.description}\nImported source: {candidate['source_url']}".strip()
-        course.save(update_fields=["description"])
+        changed_fields.append("description")
+    if changed_fields:
+        course.save(update_fields=changed_fields)
 
     module_count = 0
     extractor = skill_extractor()
@@ -428,6 +439,8 @@ def import_candidate(run, candidate):
                 defaults={
                     "content": content,
                     "order": index,
+                    "university_name": candidate["school_name"],
+                    "country": "South Africa",
                     "skills_extracted": extractor.extract(content),
                 },
             )

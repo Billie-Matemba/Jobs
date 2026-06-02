@@ -55,6 +55,7 @@ class TaskRecord(models.Model):
     progress = models.PositiveSmallIntegerField(default=0)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

@@ -4,6 +4,8 @@ from django.db import models
 class Course(models.Model):
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=50, unique=True)
+    university_name = models.CharField(max_length=255, blank=True)
+    country = models.CharField(max_length=120, blank=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -18,6 +20,8 @@ class Course(models.Model):
 class Module(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="modules")
     name = models.CharField(max_length=255)
+    university_name = models.CharField(max_length=255, blank=True)
+    country = models.CharField(max_length=120, blank=True)
     content = models.TextField(help_text="Paste the full syllabus / content for this module")
     skills_extracted = models.JSONField(default=list, blank=True)
     vector = models.JSONField(default=list, blank=True)

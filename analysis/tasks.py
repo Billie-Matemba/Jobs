@@ -26,6 +26,7 @@ def _mark(record_id, status, notes="", progress=None):
     updates = {
         "status": status,
         "notes": notes,
+        "updated_at": timezone.now(),
         "finished_at": timezone.now() if status in ("SUCCESS", "FAILURE", "STOPPED") else None,
     }
     if progress is not None:
@@ -184,14 +185,41 @@ def _do_continuous_adzuna_fetch(keyword, location, max_results, interval_seconds
 
 def _do_continuous_job_cycle(keyword, location, max_results, interval_seconds, record_id):
     from analysis.services import run_gap_analysis
-    from jobs.ingestion import fetch_from_adzuna
+    from jobs.ingestion import AdzunaAPIError, fetch_from_adzuna
 
     cycle = 0
     try:
         while not _stopped(record_id):
             cycle += 1
             _mark(record_id, "STARTED", f"Cycle {cycle}: fetching jobs for '{keyword}'...", 5)
-            saved = fetch_from_adzuna(keyword, location, max_results)
+            try:
+                def report_fetch_progress(progress):
+                    processed = progress["processed"]
+                    seen = progress["seen"]
+                    saved_so_far = progress["saved"]
+                    duplicates = progress["duplicates"]
+                    pct = 5 + int(25 * processed / max(1, seen or max_results))
+                    _mark(
+                        record_id,
+                        "STARTED",
+                        f"Cycle {cycle}: fetching Adzuna page {progress['page']} - saved {saved_so_far}, processed {processed}/{seen}, skipped {duplicates}.",
+                        pct,
+                    )
+
+                saved = fetch_from_adzuna(keyword, location, max_results, progress_callback=report_fetch_progress)
+            except AdzunaAPIError as exc:
+                logger.warning("Adzuna API issue during live pipeline cycle: %s", exc, exc_info=True)
+                if not exc.retryable:
+                    raise
+                prefix = "Adzuna API limit reached" if exc.limit_reached else "Adzuna network/API error"
+                _mark(record_id, "STARTED", f"Cycle {cycle}: {prefix}. {exc} Retrying in {interval_seconds} seconds...", 20)
+                for remaining in range(max(1, int(interval_seconds)), 0, -1):
+                    if _stopped(record_id):
+                        break
+                    if remaining == interval_seconds or remaining <= 5 or remaining % 10 == 0:
+                        _mark(record_id, "STARTED", f"Cycle {cycle}: {prefix}. Retry in {remaining} seconds.", 20)
+                    time.sleep(1)
+                continue
             if _stopped(record_id):
                 break
 
@@ -206,9 +234,11 @@ def _do_continuous_job_cycle(keyword, location, max_results, interval_seconds, r
             run = run_gap_analysis(run_name=f"Live Run {cycle}", progress_callback=report)
             _mark(record_id, "STARTED", f"Cycle {cycle}: analysis #{run.id} complete. Waiting for next fetch...", 95)
 
-            for _ in range(max(1, int(interval_seconds))):
+            for remaining in range(max(1, int(interval_seconds)), 0, -1):
                 if _stopped(record_id):
                     break
+                if remaining == interval_seconds or remaining <= 5 or remaining % 10 == 0:
+                    _mark(record_id, "STARTED", f"Cycle {cycle}: waiting {remaining} seconds before the next fetch.", 95)
                 time.sleep(1)
 
         _mark(record_id, "STOPPED", "Live pipeline paused by user.", 100)
