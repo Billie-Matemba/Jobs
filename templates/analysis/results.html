@@ -2,6 +2,7 @@
 {% block title %}Gap Results - CurriculumMatch{% endblock %}
 {% block page_title %}Gap Analysis Results{% endblock %}
 {% block topbar_actions %}
+  <a href="{% url 'technical-report-export' %}" class="btn btn-outline">Export Report</a>
   <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm" data-results-url="{% url 'analysis-results' %}">
     {% csrf_token %}
     <input type="hidden" name="run_name" value="Run {{ runs.count|add:1 }}">

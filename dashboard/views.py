@@ -1,12 +1,13 @@
 from collections import Counter
 from datetime import timedelta
+from io import BytesIO
 
 from django.db import IntegrityError
 from django.db.models import Avg
 from django.utils import timezone
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView, ListView
@@ -630,6 +631,290 @@ def build_results_visual_data(results, threshold):
         "course_recommendations": course_recommendations[:12],
         "skill_suggestion_matrix": build_skill_suggestion_matrix(results),
     }
+
+
+def docx_add_field(paragraph, instruction, placeholder="Right-click and update field in Word."):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    run = paragraph.add_run()
+    begin = OxmlElement("w:fldChar")
+    begin.set(qn("w:fldCharType"), "begin")
+    run._r.append(begin)
+
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = instruction
+    run._r.append(instr)
+
+    separate = OxmlElement("w:fldChar")
+    separate.set(qn("w:fldCharType"), "separate")
+    run._r.append(separate)
+
+    paragraph.add_run(placeholder)
+
+    end_run = paragraph.add_run()
+    end = OxmlElement("w:fldChar")
+    end.set(qn("w:fldCharType"), "end")
+    end_run._r.append(end)
+
+
+def docx_shade(cell, fill):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:fill"), fill)
+    tc_pr.append(shading)
+
+
+def docx_set_cell_text(cell, text, bold=False):
+    cell.text = ""
+    paragraph = cell.paragraphs[0]
+    run = paragraph.add_run(str(text))
+    run.bold = bold
+
+
+def add_key_value_table(document, rows):
+    table = document.add_table(rows=1, cols=2)
+    table.style = "Table Grid"
+    hdr = table.rows[0].cells
+    docx_set_cell_text(hdr[0], "Metric", True)
+    docx_set_cell_text(hdr[1], "Value", True)
+    docx_shade(hdr[0], "F2EEE8")
+    docx_shade(hdr[1], "F2EEE8")
+    for key, value in rows:
+        cells = table.add_row().cells
+        cells[0].text = str(key)
+        cells[1].text = str(value)
+    return table
+
+
+def add_simple_table(document, headers, rows):
+    table = document.add_table(rows=1, cols=len(headers))
+    table.style = "Table Grid"
+    for index, header in enumerate(headers):
+        docx_set_cell_text(table.rows[0].cells[index], header, True)
+        docx_shade(table.rows[0].cells[index], "F2EEE8")
+    for row in rows:
+        cells = table.add_row().cells
+        for index, value in enumerate(row):
+            cells[index].text = str(value)
+    return table
+
+
+def score_fill(score):
+    if score >= 80:
+        return "F58220"
+    if score >= 60:
+        return "FFBD80"
+    if score >= 40:
+        return "FFE1C2"
+    if score > 0:
+        return "F1E7DD"
+    return "F1F3F5"
+
+
+def add_cross_tab_table(document, results, limit_courses=12, limit_jobs=10):
+    courses = []
+    jobs = []
+    for result in results:
+        if result.course not in courses:
+            courses.append(result.course)
+        if result.job not in jobs:
+            jobs.append(result.job)
+    courses = courses[:limit_courses]
+    jobs = jobs[:limit_jobs]
+    if not courses or not jobs:
+        document.add_paragraph("No cross-tab data available for this school.")
+        return
+
+    score_map = {(result.course_id, result.job_id): result.similarity_percent for result in results}
+    headers = ["Course"] + [job.title[:28] for job in jobs]
+    table = document.add_table(rows=1, cols=len(headers))
+    table.style = "Table Grid"
+    for index, header in enumerate(headers):
+        docx_set_cell_text(table.rows[0].cells[index], header, True)
+        docx_shade(table.rows[0].cells[index], "F2EEE8")
+    for course in courses:
+        cells = table.add_row().cells
+        cells[0].text = course.code or course.name[:32]
+        for index, job in enumerate(jobs, start=1):
+            score = score_map.get((course.id, job.id), 0)
+            cells[index].text = f"{score:.0f}" if score else ""
+            docx_shade(cells[index], score_fill(score))
+
+
+def add_skill_matrix_table(document, matrix_rows):
+    if not matrix_rows:
+        document.add_paragraph("No school skill matrix data available.")
+        return
+    rows = [
+        [
+            row["skill"],
+            row["demand_count"],
+            row["job_count"],
+            row["course_count"],
+            row["missing_count"],
+            f'{row["gap_percent"]}%',
+            f'{row["coverage"]}%',
+        ]
+        for row in matrix_rows
+    ]
+    add_simple_table(
+        document,
+        ["Skill", "Demand evidence", "Jobs", "Courses covered", "Gap evidence", "Gap %", "Coverage %"],
+        rows,
+    )
+
+
+def latest_visual_run():
+    run = AnalysisRun.objects.first()
+    if run and not GapResult.objects.filter(run=run).exists():
+        run = AnalysisRun.objects.filter(results__isnull=False).distinct().order_by("-created_at").first()
+    return run
+
+
+class TechnicalReportExportView(View):
+    def get(self, request):
+        try:
+            from docx import Document
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+        except ImportError:
+            return HttpResponse("python-docx is not installed.", status=500)
+
+        run = latest_visual_run()
+        schools = list(
+            Course.objects
+            .exclude(university_name="")
+            .order_by("university_name")
+            .values_list("university_name", flat=True)
+            .distinct()
+        )
+        if Course.objects.filter(university_name="").exists():
+            schools.append("Unassigned school")
+
+        document = Document()
+        section = document.sections[0]
+        footer = section.footer.paragraphs[0]
+        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        footer.add_run("Page ")
+        docx_add_field(footer, "PAGE", "1")
+
+        title = document.add_paragraph()
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_run = title.add_run("CurriculumMatch Technical Report")
+        title_run.bold = True
+        title_run.font.size = None
+        subtitle = document.add_paragraph()
+        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        subtitle.add_run("Curriculum-to-job-market alignment report").italic = True
+        document.add_paragraph(f"Generated: {timezone.localtime(timezone.now()).strftime('%d %B %Y %H:%M')}")
+        document.add_paragraph(f"Analysis run: {run.name if run else 'No completed analysis run available'}")
+        document.add_paragraph("Scope: all schools currently stored in the database.")
+        document.add_page_break()
+
+        document.add_heading("Table of Contents", level=1)
+        docx_add_field(document.add_paragraph(), 'TOC \\o "1-3" \\h \\z \\u')
+        document.add_paragraph("Note: in Microsoft Word, right-click the table above and choose Update Field to refresh page numbers.")
+        document.add_page_break()
+
+        document.add_heading("1. Introduction", level=1)
+        document.add_paragraph(
+            "This technical report summarises curriculum-to-job-market alignment using the courses, modules, "
+            "job adverts, extracted skills, semantic similarity scores, and school metadata currently stored in CurriculumMatch. "
+            "It is designed as an operational report, not a literature review."
+        )
+
+        document.add_heading("2. Methodology", level=1)
+        document.add_paragraph(
+            "The system parses curriculum and job evidence, extracts explicit skill terms, creates semantic vectors, "
+            "and compares each course against job adverts. The final score blends semantic similarity with explicit skill coverage."
+        )
+        document.add_paragraph("Cosine similarity: cos(A, B) = (A . B) / (||A|| * ||B||)")
+        document.add_paragraph("Course semantic score: mean(top-k module-to-job cosine scores)")
+        document.add_paragraph("Skill coverage: matched job skills / unique job skills")
+        document.add_paragraph("Final score: ((0.75 * semantic) + (0.25 * skill coverage)) / (0.75 + 0.25)")
+        document.add_paragraph(
+            "School Skill Matrix: demand evidence is the count of course-to-job comparisons where a refined skill appears as "
+            "matched or missing. Gap percentage is gap evidence divided by demand evidence. Coverage percentage is covered "
+            "evidence divided by demand evidence."
+        )
+
+        document.add_heading("3. Dashboard Snapshot", level=1)
+        all_results = list(GapResult.objects.filter(run=run).select_related("course", "job")) if run else []
+        avg_score = round((sum(result.similarity_score for result in all_results) / len(all_results)) * 100, 1) if all_results else 0
+        add_key_value_table(document, [
+            ("Schools", len(schools)),
+            ("Courses", Course.objects.count()),
+            ("Job adverts", JobAdvert.objects.count()),
+            ("Course-job comparisons", len(all_results)),
+            ("Average final score", f"{avg_score}%"),
+        ])
+
+        document.add_heading("4. School Results", level=1)
+        for school in schools:
+            document.add_heading(school, level=2)
+            if school == "Unassigned school":
+                school_results = [result for result in all_results if not result.course.university_name]
+            else:
+                school_results = [result for result in all_results if result.course.university_name == school]
+            school_courses = Course.objects.filter(university_name="" if school == "Unassigned school" else school)
+            visual_data = build_results_visual_data(school_results, 55)
+            summary = visual_data["school_summaries"][0] if visual_data["school_summaries"] else None
+            add_key_value_table(document, [
+                ("Courses in database", school_courses.count()),
+                ("Analysed comparisons", len(school_results)),
+                ("Average score", f'{summary["avg_score"]}%' if summary else "No analysis data"),
+                ("Matched evidence", summary["matched_total"] if summary else 0),
+                ("Missing evidence", summary["missing_total"] if summary else 0),
+                ("Mismatch risk", "Yes" if summary and summary["mismatch"] else "No"),
+            ])
+
+            document.add_heading("Curriculum Recommendations", level=3)
+            for item in visual_data["school_recommendations"]:
+                document.add_paragraph(f'{item["school"]} ({item["score"]}%): {item["message"]}', style=None)
+
+            document.add_heading("School Skill Matrix", level=3)
+            add_skill_matrix_table(document, visual_data["skill_suggestion_matrix"])
+
+            document.add_heading("Course-to-Job Cross-tab Snapshot", level=3)
+            add_cross_tab_table(document, school_results)
+
+            document.add_heading("Top Course-to-Job Matches", level=3)
+            top_rows = [
+                [
+                    result.course.name[:48],
+                    result.job.title[:48],
+                    result.job.company or "",
+                    f"{result.similarity_percent}%",
+                    ", ".join((result.matched_skills or [])[:5]),
+                    ", ".join((result.missing_skills or [])[:5]),
+                ]
+                for result in sorted(school_results, key=lambda item: item.similarity_score, reverse=True)[:8]
+            ]
+            if top_rows:
+                add_simple_table(document, ["Course", "Job advert", "Company", "Score", "Matched", "Missing"], top_rows)
+            else:
+                document.add_paragraph("No analysed matches available for this school.")
+
+        document.add_heading("5. Appendix: Interpretation Notes", level=1)
+        document.add_paragraph(
+            "Scores and evidence counts are decision-support signals. Low alignment can indicate a genuine curriculum gap, "
+            "a job advert outside programme scope, thin module text, or terminology differences. Recommendations should be "
+            "reviewed by curriculum owners before module changes are made."
+        )
+
+        output = BytesIO()
+        document.save(output)
+        output.seek(0)
+        response = HttpResponse(
+            output.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        response["Content-Disposition"] = 'attachment; filename="curriculummatch-technical-report.docx"'
+        return response
 
 
 class TaskListView(ListView):

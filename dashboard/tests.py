@@ -132,6 +132,7 @@ class DashboardVisualDataTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Best Course-to-Job Matches")
+        self.assertContains(response, "Export Report")
         self.assertContains(response, "match-tile")
         self.assertContains(response, "Course to job advert")
         self.assertContains(response, "Filter network by school")
@@ -186,6 +187,31 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Coverage 0%")
         self.assertContains(response, "Demand evidence = covered evidence + gap evidence")
         self.assertContains(response, "Gap % = gap evidence / demand evidence")
+        self.assertContains(response, "Export Report")
+
+    def test_technical_report_export_returns_word_document(self):
+        self.course.university_name = "University of Johannesburg"
+        self.course.country = "South Africa"
+        self.course.save(update_fields=["university_name", "country"])
+        run = AnalysisRun.objects.create(name="Report run", status="done")
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=self.job,
+            similarity_score=0.66,
+            matched_skills=["strategy"],
+            missing_skills=["analytics"],
+        )
+
+        response = self.client.get(reverse("technical-report-export"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        self.assertIn("curriculummatch-technical-report.docx", response["Content-Disposition"])
+        self.assertGreater(len(response.content), 1000)
 
     def test_business_recommendations_refine_technical_skill_noise(self):
         insight = recommendation_skill_insight(

@@ -2,6 +2,7 @@
 {% block title %}Dashboard - CurriculumMatch{% endblock %}
 {% block page_title %}Executive Dashboard{% endblock %}
 {% block topbar_actions %}
+  <a href="{% url 'technical-report-export' %}" class="btn btn-outline">Export Report</a>
   <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm">
     {% csrf_token %}
     <input type="hidden" name="run_name" value="Run {{ last_run.id|add:1|default:'1' }}">

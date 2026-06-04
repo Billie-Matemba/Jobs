@@ -9,6 +9,7 @@ from dashboard.views import (
     DashboardView, JobUploadView, JobListView, JobDeleteView,
     RunAnalysisView, AnalysisResultsView,
     StartContinuousJobsView, StartJobsOnlyView, StopTaskView, TaskListView,
+    TechnicalReportExportView,
     task_status_api, results_json, dashboard_metrics, similarity_network,
 )
 from course_scraper.views import CourseScraperView, StartCourseScrapeView, scrape_status_api
@@ -45,6 +46,7 @@ urlpatterns = [
     path("jobs/fetch-only/start/", StartJobsOnlyView.as_view(), name="start-jobs-only"),
     path("tasks/<int:pk>/stop/", StopTaskView.as_view(), name="stop-task"),
     path("analysis/results/", AnalysisResultsView.as_view(), name="analysis-results"),
+    path("reports/technical/", TechnicalReportExportView.as_view(), name="technical-report-export"),
     path("methodology/", MethodologyView.as_view(), name="methodology"),
 
     # Tasks
